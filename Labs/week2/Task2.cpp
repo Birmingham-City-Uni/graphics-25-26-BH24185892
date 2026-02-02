@@ -22,32 +22,32 @@ void setPixel(std::vector<uint8_t>& image, int x, int y, int width, int height, 
 
 void drawLine(std::vector<uint8_t>& image, int width, int height, int startX, int startY, int endX, int endY)
 {
-	float gradient = float(endY - startY) / float(endX - startX);
+	// Task 1: Bresenham's line algorithm
+	// *** YOUR CODE HERE
+	//Step 1: work out the gradient
+	float gradient;
 
-	bool steep = fabsf(gradient) > 1.0f;
+	// Step 2: check if it's steep (i.e. absolute value bigger than 1;)
+	bool steep;
 
 	if (steep) {
-		if (startY > endY) {
-			std::swap(startX, endX);
-			std::swap(startY, endY);
-		}
+		// Step 3: The steep version of the code, iterating over Y
+		// First, make sure that startY is less than endY. 
+		// If they're in the wrong order, swap both X and Y.
+
+		// Now, iterate from startY to endY. 
 		for (int y = startY; y <= endY; ++y) {
-			int x = startX + int(float(y - startY) / gradient);
-			if (x >= 0 && x < width && y >= 0 && y < height) {
-				setPixel(image, x, y, width, height, 255, 255, 255);
-			}
+			// Draw the line, following the formula!
 		}
 	}
 	else {
-		if (startX > endX) {
-			std::swap(startX, endX);
-			std::swap(startY, endY);
-		}
+		// Step 4: The shallow version of the code, iterating over X
+		// First, make sure that startx is less than endX. 
+		// If they're in the wrong order, swap both X and Y.
+
+		// Now, iterate from startY to endY. 
 		for (int x = startX; x <= endX; ++x) {
-			int y = startY + int(float(x - startX) * gradient);
-			if (x >= 0 && x < width && y >= 0 && y < height) {
-				setPixel(image, x, y, width, height, 255, 255, 255);
-			}
+			// Draw the line, following the formula!
 		}
 	}
 }
@@ -98,36 +98,21 @@ int main()
 
 
 		if (lineStart == 'f') {
+
 			std::vector<unsigned int> face;
-			unsigned int idx, idxTex, idxNorm;
-			while (lineSS >> idx >> ignoreChar >> idxTex >> ignoreChar >> idxNorm) {
-				face.push_back(idx-1);
-			}
-			if(face.size() > 0) faces.push_back(face);
+			// *** YOUR CODE HERE ***
+			// This time we care about faces!
+			// Load this face from the line, pushing it back into the list of faces.
+			// Be careful to ignore the "/" characters, and the extra texture and normal indices.
 		}
 	}
 
 	for (int f = 0; f < faces.size(); ++f) {
 		// **** Task 3 ****
-		// Finally, let's draw the vertices!
-		// For each vertex, we need to call setPixel to draw a point to the screen.
-		// You should end up with an output similar to example.png.
-		// Hint 1: You just need to use the x and y components of the vectors, you can ignore the z component for now.
-		// Hint 2: Note the mesh coordinates range from about -0.5 to 0.5 in each axis (x, y and z). However,
-		//         your image coordinates go from 0 to 512. You probably want to add on half of the width and height to move
-		//         your vertices towards the centre of the screen, and multiply by a value (about 200 or so) to make the mesh
-		//         big enough to see.
+		// Finally, let's draw the faces!
 
-		int x0 = vertices[faces[f][0]][0] * 250 + width / 2;
-		int y0 = -vertices[faces[f][0]][1] * 250 + height / 2;
-		int x1 = vertices[faces[f][1]][0] * 250 + width / 2;
-		int y1 = -vertices[faces[f][1]][1] * 250 + height / 2;
-		int x2 = vertices[faces[f][2]][0] * 250 + width / 2;
-		int y2 = -vertices[faces[f][2]][1] * 250 + height / 2;
-		drawLine(imageBuffer, width, height, x0, y0, x1, y1);
-		drawLine(imageBuffer, width, height, x1, y1, x2, y2);
-		drawLine(imageBuffer, width, height, x2, y2, x0, y0);
-
+		// First, load the vertices, and resize them like we did in Task1.cpp
+		// Then, call DrawLine three times, to draw each side of the triangle!
 	}
 
 	// *** Encoding image data ***

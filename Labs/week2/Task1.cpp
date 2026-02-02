@@ -54,21 +54,21 @@ int main()
 	// starts with a v.
 	// For these V lines, you should load the X, Y and Z coordinates into a new vector
 	// and push it back into your array of vertices.
+
+	// I've set up a big std::vector here to store all the vertices.
 	std::vector<Vector3> vertices;
+	
+	// This while loop processes all the lines of the file
 	std::string line;
 	while (!bunnyFile.eof())
 	{
 		std::getline(bunnyFile, line);
-		std::stringstream lineSS(line.c_str());
-		char lineStart;
-		lineSS >> lineStart;
-		if (lineStart == 'v') {
-			Vector3 v;
-			for (int i = 0; i < 3; ++i) lineSS >> v[i];
-			vertices.push_back(v);
+		// *** YOUR CODE HERE ***
 
-			std::cout << v << std::endl;
-		}
+		// Process each line of the file
+		// Load it into a new Vector3, if the line starts with a V
+		// Push this back into the std::vector of vertices
+		// For debugging, maybe print out the vector too!
 	}
 
 	for (auto& v : vertices) {
@@ -82,9 +82,7 @@ int main()
 		//         your vertices towards the centre of the screen, and multiply by a value (about 200 or so) to make the mesh
 		//         big enough to see.
 
-		int x = v[0] * 250 + width / 2;
-		int y = -v[1] * 250 + height / 2;
-		setPixel(imageBuffer, x, y, width, height, 255, 255, 255);
+		// *** YOUR CODE HERE ***
 	}
 
 
