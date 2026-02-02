@@ -24,7 +24,7 @@ int main()
 			imageBuffer[pixelIdx * nChannels + 2] = 255; // Set blue pixel values to 255 (full brightness)
 			imageBuffer[pixelIdx * nChannels + 3] = 255; // Set alpha (transparency) pixel values to 255 (fully opaque)
 		}
-
+	  
 	/// *** Lab Tasks ***
 	// * Task 1: Try adapting the code above to set the lower half of the image to be a green colour.
 	// * Task 2: Doing the maths above to work out indices is a bit annoying! Write your own setPixel function.

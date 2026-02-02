@@ -23,12 +23,14 @@ void setPixel(std::vector<uint8_t>& image, int x, int y, int width, int height, 
 void drawLine(std::vector<uint8_t>& image, int width, int height, int startX, int startY, int endX, int endY)
 {
 	// Task 1: Bresenham's line algorithm
-	// *** YOUR CODE HERE
+	
 	//Step 1: work out the gradient
-	float gradient;
+	float gradient = (float)(endY - startY) / (endX - startX);
 
 	// Step 2: check if it's steep (i.e. absolute value bigger than 1;)
-	bool steep;
+	bool steep = std::fabsf(gradient) > 1;
+
+	float intercept = startY - gradient * startX;
 
 	if (steep) {
 		// Step 3: The steep version of the code, iterating over Y
@@ -38,6 +40,8 @@ void drawLine(std::vector<uint8_t>& image, int width, int height, int startX, in
 		// Now, iterate from startY to endY. 
 		for (int y = startY; y <= endY; ++y) {
 			// Draw the line, following the formula!
+			float x = (y - intercept) / gradient;
+			setPixel(image, x, y, width, height, 255, 255, 255, 255);
 		}
 	}
 	else {
@@ -48,6 +52,9 @@ void drawLine(std::vector<uint8_t>& image, int width, int height, int startX, in
 		// Now, iterate from startY to endY. 
 		for (int x = startX; x <= endX; ++x) {
 			// Draw the line, following the formula!
+
+			float y = gradient * x + intercept;
+			setPixel(image, x, y, width, height, 255, 255, 255, 255);
 		}
 	}
 }
@@ -72,7 +79,7 @@ int main()
 
 	std::ifstream bunnyFile(bunnyFilename);
 
-
+	
 	// *** Task 2 ***
 	// Your next task is to load all the vertices from the OBJ file.
 	// I've given you some starter code here that reads through each line of the
@@ -100,7 +107,18 @@ int main()
 		if (lineStart == 'f') {
 
 			std::vector<unsigned int> face;
-			// *** YOUR CODE HERE ***
+			std::stringstream Faces(line);
+			char ignoref;
+			int ignorenumber;
+			int f1, f2, f3;
+			Faces >> ignoref >>
+				f1 >> ignoref >> ignorenumber >> ignoref >> ignorenumber >>
+				f2 >> ignoref >> ignorenumber >> ignoref >> ignorenumber >>
+				f3 >> ignoref >> ignorenumber >> ignoref >> ignorenumber;
+			face.push_back(f1 - 1);
+			face.push_back(f2 - 1);
+			face.push_back(f3 - 1);
+			faces.push_back(face);
 			// This time we care about faces!
 			// Load this face from the line, pushing it back into the list of faces.
 			// Be careful to ignore the "/" characters, and the extra texture and normal indices.
@@ -110,6 +128,26 @@ int main()
 	for (int f = 0; f < faces.size(); ++f) {
 		// **** Task 3 ****
 		// Finally, let's draw the faces!
+		Vector3 v0, v1, v2;
+		v0 = vertices[faces[f][0]];
+		v1 = vertices[faces[f][1]];
+		v2 = vertices[faces[f][2]];
+
+		float x0 = (v0.x() + 1) * width / 2;
+		float x1 = (v1.x() + 1) * width / 2;
+		float x2 = (v2.x() + 1) * width / 2;
+
+		float y0 = (v0.y() + 1) * height / 2;
+		float y1 = (v1.y() + 1) * height / 2;
+		float y2 = (v2.y() + 1) * height / 2;
+
+		y0 = height - y0;
+		y1 = height - y1;
+		y2 = height - y2;
+
+		drawLine(imageBuffer, width, height, x0, y0, x1, y1);
+		drawLine(imageBuffer, width, height, x1, y1, x2, y2);
+		drawLine(imageBuffer, width, height, x2, y2, x0, y0);
 
 		// First, load the vertices, and resize them like we did in Task1.cpp
 		// Then, call DrawLine three times, to draw each side of the triangle!

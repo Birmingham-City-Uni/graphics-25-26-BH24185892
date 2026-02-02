@@ -28,6 +28,9 @@ void setPixel(std::vector<uint8_t>& image, int x, int y, int width, int height, 
 
 int main()
 {
+	const Vector3 myVec;
+	myVec[2];
+
 	std::string outputFilename = "output.png";
 
 	const int width = 512, height = 512;
@@ -64,7 +67,18 @@ int main()
 	{
 		std::getline(bunnyFile, line);
 		// *** YOUR CODE HERE ***
-
+		if (line[0] == 'v')
+		{
+			std::stringstream linestream(line);
+			char rubbish;
+			linestream >> rubbish;
+			Vector3 V;
+			for (int i = 0; i < 3; ++i)
+			{
+				linestream >> V[i];
+			}
+			vertices.push_back(V);
+		};
 		// Process each line of the file
 		// Load it into a new Vector3, if the line starts with a V
 		// Push this back into the std::vector of vertices
@@ -81,8 +95,15 @@ int main()
 		//         your image coordinates go from 0 to 512. You probably want to add on half of the width and height to move
 		//         your vertices towards the centre of the screen, and multiply by a value (about 200 or so) to make the mesh
 		//         big enough to see.
+		float x = v.x();
+		float y = v.y();
+		x = x + 1;
+		y = y + 1;
+		x = x * width / 2;
+		y = y * height / 2;
 
-		// *** YOUR CODE HERE ***
+		setPixel(imageBuffer, x, height - y, width, height, 255, 255, 255, 255);
+
 	}
 
 

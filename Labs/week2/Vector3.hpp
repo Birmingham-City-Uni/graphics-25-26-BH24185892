@@ -16,7 +16,9 @@ public:
 	// You can use an initialiser list, or set them in the constructor function's body.
 	Vector3()
 	{
-		// YOUR CODE HERE
+		float x = 0.0f;
+		float y = 0.0f;
+		float z = 0.0f;
 	}
 
 	// This constructor can be used to set the x, y and z components of a vector when it
@@ -24,19 +26,29 @@ public:
 	// provided.
 	Vector3(float x, float y, float z)
 	{
-		// YOUR CODE HERE
+		x_ = x;
+		y_ = y;
+		z_ = z;
 	}
 
 	// Implement this method to add two vectors.
 	Vector3 operator+(const Vector3& other) const
 	{
-		// YOUR CODE HERE
+		return Vector3(
+			x_ + other.x_,
+			y_ + other.y_,
+			z_ + other.z_
+		);
 	}
 
 	// Multiply the vector by a scalar.
 	Vector3 operator*(float scalar) const
 	{
-		// YOUR CODE HERE
+		return Vector3(
+		x_ * scalar,
+		y_ * scalar,
+		z_ * scalar
+		);
 	}
 
 	// Get a component of the vector
@@ -48,7 +60,19 @@ public:
 	// error.
 	float& operator[](int i)
 	{
-		// YOUR CODE HERE
+		std::cout << "non Const VErsion" << std::endl;
+		if (i == 0) {
+			return x_;
+		}
+		else if (i == 1) {
+			return y_;
+		}
+		else if (i == 2) {
+			return z_;
+		}
+		else {
+			throw std::runtime_error("Bad Index Error");
+		}
 	}
 
 	// This is the const version of the [] operator.
@@ -56,7 +80,19 @@ public:
 	// The code inside can be the same as for the non-const version above.
 	float operator[](int i) const
 	{
-		// YOUR CODE HERE
+		std::cout << "Const VErsion" << std::endl;
+		if (i == 0) {
+			return x_;
+		}
+		else if (i == 1) {
+			return y_;
+		}
+		else if (i == 2) {
+			return z_;
+		}
+		else {
+			throw std::runtime_error("Bad Index Error");
+		}
 	}
 
 	// I have already written these getters for you.
