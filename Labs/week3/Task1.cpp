@@ -35,10 +35,43 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	// YOUR CODE HERE
 	int minX = 0, minY = 0, maxX = 0, maxY = 0;
 
+	minX = std::min(p0.x(), std::min(p1.x(), p2.x()));
+
+	minY = std::min(p0.y(), std::min(p1.y(), p2.y()));
+
+	maxX = std::max(p0.x(), std::max(p1.x(), p2.x()));
+
+	maxY = std::max(p0.y(), std::max(p1.y(), p2.y()));
 	// Check your minX, minY, maxX and maxY values don't lie outside the image!
 	// This would cause errors if you attempt to draw there.
 	// That is, clamp these values so that 0 <= x < width and 0 <= y < height.
+	if (maxY > height - 1) {
+		maxY = height - 1;
+	}
+	if (maxY < 0) {
+		maxY = 0;
+	}
 
+	if (maxX > width - 1) {
+		maxX = width - 1;
+	}
+	if (maxX < 0) {
+		maxX = 0;
+	}
+
+	if (minY > height - 1) {
+		minY = height - 1;
+	}
+	if (minY < 0) {
+		minY = 0;
+	}
+
+	if (minX > width - 1) {
+		minX = width - 1;
+	}
+	if (minX < 0) {
+		minX = 0;
+	}
 	// YOUR CODE HERE
 
 	// Find vectors going along two edges of the triangle
@@ -46,6 +79,8 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 
 	// YOUR CODE HERE
 	Vector2 edge1, edge2;
+	edge1 = p0 - p1;
+	edge2 = p1 - p2;
 
 	// Find the area of the triangle using a cross product.
 	// Optional: You can use the sign of the cross product to see if this triangle is facing towards

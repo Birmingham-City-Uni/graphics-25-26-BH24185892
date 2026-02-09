@@ -15,7 +15,8 @@ public:
 	Vector2()
 		:x_(0), y_(0)
 	{
-		// YOUR CODE HERE
+		float x_ = 0;
+		float y_ = 0;
 	}
 
 	// This constructor can be used to set the x, y and z components of a vector when it
@@ -24,7 +25,8 @@ public:
 	Vector2(float x, float y)
 		:x_(x), y_(y)
 	{
-		// YOUR CODE HERE
+		x_ = x;
+		y_ = y; 
 	}
 
 	// Implement this method to add two vectors.
@@ -114,12 +116,14 @@ public:
 		// To implement it here, we're interpreting these vectors as 3D vectors with a z-component of 0
 		// We're only returning a float (which is the z-component of the resulting vector)
 		// If you think about it, the x and y components of this output vector will always be 0.
+		return x_ * other.y_ - y_ * other.x_;
 	}
 
 	const float dot(const Vector2& other)
 	{
 		// YOUR CODE HERE
 		// Implement the dot product, following the formula from the slides.
+		return (x_ * other.x_) + (y_ * other.y_);
 	}
 
 private:
