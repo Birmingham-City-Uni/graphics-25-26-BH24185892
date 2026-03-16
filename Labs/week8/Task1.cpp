@@ -122,11 +122,11 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 					// Subtask 3: Work out correct inputs for the phongSpecularTerm function inside drawTriangle, and draw an image!
 					// *** YOUR CODE HERE ***
 					// Work out the incoming light dir (from the light into the surface point).
-					Eigen::Vector3f incomingLightDir = Eigen::Vector3f::Zero();
+					Eigen::Vector3f incomingLightDir = light->getDirection(worldP);
 					// Work out the view direction (from surface point towards camera). Make sure it's normalized!
-					Eigen::Vector3f viewDir = Eigen::Vector3f::Zero();
+					Eigen::Vector3f viewDir = (camWorldPos - worldP).normalized();
 					// Find the specular term by calling phongSpecularTerm.
-					float specularTerm = 0.f;
+					float specularTerm = phongSpecularTerm(incomingLightDir, normP, viewDir, specularExponent);
 					// *** END YOUR CODE ***
 
 					Eigen::Vector3f specularOut = specularColor * specularTerm;
@@ -268,7 +268,7 @@ int main()
 	// Subtask 4: Try re-rendering your image with different lighting setups, and specular exponents, and see how it changes!
 	// You can modify the lighting setup here....
 	std::vector<std::unique_ptr<Light>> lights;
-	lights.emplace_back(new AmbientLight(Eigen::Vector3f(0.1f, 0.1f, 0.1f)));
+	//lights.emplace_back(new AmbientLight(Eigen::Vector3f(0.1f, 0.1f, 0.1f)));
 	lights.emplace_back(new DirectionalLight(Eigen::Vector3f(0.4f, 0.4f, 0.4f), Eigen::Vector3f(1.f, -1.f, 0.0f)));
 
 	Mesh bunnyMesh = loadMeshFile(bunnyFilename);
