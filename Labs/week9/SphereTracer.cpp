@@ -79,15 +79,39 @@ bool raySphereIntersection(const Ray& ray, const Sphere& sphere, Vector3f& inter
 
 	// Steps:
 	// 1. Find the value of A, B and C from the lecture slides.
+	Vector3f oc = ray.origin - sphere.centre;
+	float A = ray.direction.dot(ray.direction);
+	float B = 2.0f * oc.dot(ray.direction);
+	float C = oc.dot(oc) - sphere.radius * sphere.radius;
+	
 	// 2. Find the value of the discriminant B^2 - 4AC
+	float discriminant = B * B - 4.0f * A * C;
+	
 	// 3. If the discriminant is less than 0, return false (no solutions).
+	if (discriminant < 0.0f) {
+		return false;
+	}
+	
 	// 4. Otherwise, find the two solutions for t (t1 and t2, for example).
+	float sqrtDiscriminant = sqrtf(discriminant);
+	float t1 = (-B - sqrtDiscriminant) / (2.0f * A);
+	float t2 = (-B + sqrtDiscriminant) / (2.0f * A);
+	
 	// 5. Find the smallest solution for t that's bigger than minT.
 	//   a. If such a t exists, set the value of "intersection" and "t" and return true.
 	//   b. If no such t exists, return false.
-
-	// Remove this existing code, that just always returns false.
-	return false;
+	float tResult;
+	if (t1 > minT) {
+		tResult = t1;
+	} else if (t2 > minT) {
+		tResult = t2;
+	} else {
+		return false;
+	}
+	
+	t = tResult;
+	intersection = ray.origin + ray.direction * t;
+	return true;
 	// *** END YOUR CODE ***
 } 
 
@@ -99,7 +123,7 @@ Vector3f getSphereNormal(const Sphere& sphere, const Vector3f& location) {
 	// See the slides for more detail.
 	// 
 	// Remove this existing code that just returns 0.
-	return Vector3f::Zero();
+	return (location - sphere.centre).normalized();
 	// *** END YOUR CODE ***
 }
 
@@ -113,12 +137,17 @@ bool refract(const Vector3f& incident, const Vector3f& norm, float eta, Vector3f
 
 	// Steps:
 	// 1. Find the value of the "k" from the lecture slides.
+	float cosI = -norm.dot(incident);
+	float k = 1.0f - eta * eta * (1.0f - cosI * cosI);
+	
 	// 2. If k < 0, return false (TIR occurs).
+	if (k < 0.0f) {
+		return false;
+	}
+	
 	// 3. Otherwise, find the refracted ray and return true.
-
-	// This existing code just always returns false.
-	// Remove it when you write your own code!
-	return false;
+	refracted = eta * incident + (eta * cosI - sqrtf(k)) * norm;
+	return true;
 	// *** END YOUR CODE
 }
 
@@ -220,9 +249,23 @@ Vector3f traceRay(const Ray& ray, const std::vector<Sphere>& spheres, const std:
 		// REMINDER: don't forget to increase the value of bounce by 1 when you call traceRay
 		// again recursively! This will make sure you don't exceed the maxBounces bounce count.
 
-		// This existing code throws an error as mirror spheres haven't been implemented yet.
-		// Remove it when you've implemented mirrors!
-		throw std::runtime_error("Mirror material not implemented!");
+		// Calculate the surface normal at the hit point
+		Vector3f normal = getSphereNormal(*hitSphere, hitIntersection);
+		
+		// Calculate the reflected direction using: R = I - 2(N·I)N
+		Vector3f reflectedDir = ray.direction - 2.0f * ray.direction.dot(normal) * normal;
+		reflectedDir.normalize();
+		
+		// Create the reflected ray
+		Ray reflectedRay;
+		reflectedRay.origin = hitIntersection;
+		reflectedRay.direction = reflectedDir;
+		
+		// Trace the reflected ray recursively
+		Vector3f reflectedColor = traceRay(reflectedRay, spheres, lights, bounce + 1);
+		
+		// Optional: multiply by sphere's color for colored mirrors
+		return coeffWiseMultiply(reflectedColor, hitSphere->colour);
 		//*** END YOUR CODE
 	}
 	else if (hitSphere->material == Material::REFRACTIVE) {
@@ -230,20 +273,12 @@ Vector3f traceRay(const Ray& ray, const std::vector<Sphere>& spheres, const std:
 		float eta; // This is n1/n2, the ratio of IORs.
 		Vector3f normal = getSphereNormal(*hitSphere, hitIntersection);
 
-		// Check if we're going into a sphere, or coming out of a sphere.
 		bool enteringSphere = ray.direction.dot(normal) < 0;
 
-		// The below code to find eta assumes all spheres are surrounded by air.
-		// If you plan to set up scenes with spheres that intersect or surround each other, this will need revising!
-
-		// If we're entering the sphere, we assume we're coming from free air so n1=1, n2=the IOR of the sphere.
 		if (enteringSphere) eta = 1.f / hitSphere->ior;
 
-		// If we're leaving the sphere, we assume we're going from the sphere into air, so n1=IOR, n2=1
 		else eta = hitSphere->ior;
 
-		// Finally, if we're leaving the sphere the normal will need flipping so our refract() function works
-		// correctly.
 		if (!enteringSphere) normal = -normal;
 
 		// Task 6: Add refraction
@@ -300,7 +335,8 @@ int main()
 	spheres.push_back({ Vector3f(0.f, -2.f, 4.f), 0.5f, Material::DIFFUSE, Vector3f(0.2f, 0.2f, 0.8f) });
 	spheres.push_back({ Vector3f(0.f, 1.f, 6.f), 0.3f, Material::DIFFUSE, Vector3f(0.8f, 0.8f, 0.f) });
 	// Task 5: Add a mirror reflective sphere to your scene, and raytrace again!
-	//spheres.push_back({ Vector3f(2.f, 2.f, 4.f), 0.5f, Material::MIRROR, Vector3f(0.9f, 0.9f, 0.9f) });
+	spheres.push_back({ Vector3f(2.f, 2.f, 4.f), 0.5f, Material::MIRROR, Vector3f(0.9f, 0.9f, 0.9f) });
+	
 	// Task 7: Add a refractive sphere to your scene, and raytrace again!
 	//spheres.push_back({ Vector3f(0.f, 0.f, 3.f), 0.5f, Material::REFRACTIVE, Vector3f(0.9f, 0.8f, 0.8f), 1.4f });
 
