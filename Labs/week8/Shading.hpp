@@ -57,15 +57,16 @@ float blinnPhongSpecularTerm(const Eigen::Vector3f& incomingLightDir, const Eige
 {
 	// *** YOUR CODE HERE ***
 	// Find the half-vector (average of view dir and light dir)
-	Eigen::Vector3f halfVec = Eigen::Vector3f::Zero();
+	Eigen::Vector3f halfVec = (viewDir - incomingLightDir).normalized();
 
 	// Find dot product of half-vector and normal.
-	float halfDotNorm = 0.f;
+	float halfDotNorm = halfVec.dot(normal);
 	
 	// Force the dot product to be non-negative (if <0, set to 0)
+	halfDotNorm = std::max(0.f, halfDotNorm);
 
 	//Return the dot product raised to the exponent
-	return 0.f;
+	return std::pow(halfDotNorm, exponent);
 	// *** END YOUR CODE ***
 }
 
