@@ -1,32 +1,12 @@
-# Blender 5.0.1 MTL File: 'Yuna anim.blend'
+# Blender 5.1.1 MTL File: 'None'
 # www.blender.org
 
-newmtl mat000
-Ns 0.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.000000 0.000000 0.000000
+newmtl YunaMat
+Ns 11.663996
+Ka 0.623000 0.623000 0.623000
+Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
-Ni 1.450000
+Ni 1.500000
 d 1.000000
-illum 1
-map_Kd C:/ffx0000_upscayl_4x_ultramix_balanced.png
-
-newmtl mat001
-Ns 0.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.000000 0.000000 0.000000
-Ke 0.000000 0.000000 0.000000
-Ni 1.450000
-illum 1
-map_Kd C:/ffx0001_upscayl_4x_ultramix_balanced.png
-map_d C:/ffx0001_upscayl_4x_ultramix_balanced.png
-
-newmtl mat002
-Ns 0.000000
-Ka 1.000000 1.000000 1.000000
-Ks 0.000000 0.000000 0.000000
-Ke 0.000000 0.000000 0.000000
-Ni 1.450000
-d 1.000000
-illum 1
-map_Kd C:/ffx0000.png
+illum 3
+map_Kd C:/Users/S24185892/Documents/GitHub/graphics-25-26-BH24185892/Coursework/Pathtracer/Yuna Model/YunaTex.png
