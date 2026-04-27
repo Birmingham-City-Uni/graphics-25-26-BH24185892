@@ -64,15 +64,27 @@ int main(int argc, char* argv[]) {
 		lavender(178.f / 255.f, 164.f / 255.f, 212.f / 255.f);
 
 	// *** Load shaders and textures ***
-	std::vector<uint8_t> spotTexture;
+	
+	//Tidus
+	std::vector<uint8_t> TidusTexture;
 	unsigned int width, height;
-	lodepng::decode(spotTexture, width, height, "../models/TidusModel/TidusTex.png");
+	lodepng::decode(TidusTexture, width, height, "../models/TidusModel/TidusTex.png");
+	TexturedLambertianShader tidusShader(&TidusTexture, width, height);
+
+	std::vector<uint8_t> TidusArmTexture;
+	lodepng::decode(TidusArmTexture, width, height, "../models/TidusModel/TidusArm.png");
+	TexturedLambertianShader tidusArmShader(&TidusArmTexture, width, height);
+
+	//Yuna
+	std::vector<uint8_t> YunaTexture;
+	lodepng::decode(YunaTexture, width, height, "../models/YunaModel/YunaTex.png");
+	TexturedLambertianShader yunaShader(&YunaTexture, width, height);
 
 	LambertianShader redLambertianShader(red);
 	PhongShader bluePlasticShader(blue, Eigen::Vector3f(1.f, 1.f, 1.f), 100.f);
 	LambertianShader aquaLambertianShader(aqua);
 	LambertianShader lavenderLambertianShader(lavender);
-	TexturedLambertianShader spotShader(&spotTexture, width, height);
+	
 	MirrorShader mirrorShader;
 	TexCoordTestShader texCoordTestShader;
 
@@ -81,17 +93,22 @@ int main(int argc, char* argv[]) {
 
 	// Optional code: here's how to add the spot mesh to the scene, using a BVH
 	// Try enabling this and comparing it to the non-BVH version below!
-	Model spotModel("../models/TidusModel/Tidus.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(spotModel, &spotShader, 4, rotateY(M_PI / 4.0f)));
+	Model tidusModel("../models/TidusModel/Tidus.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusModel, &tidusShader, 4, rotateY(0)));
+	Model tidusArmModel("../models/TidusModel/TidusArm.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusArmModel, &tidusArmShader, 4, rotateY(0)));
 
+	Model yunaModel("../models/YunaModel/Yuna.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(yunaModel, &yunaShader, 4, rotateY(0)));
+	
 	// Here's how to add the mesh without using the BVH.
 	// Try comparing performance to the BVH version above.
-	//Model spotModel("../models/Tidus.obj");
-	//scene.renderables.push_back(std::make_shared<Mesh>(&spotShader, &spotModel));
+	//Model tidusModel("../models/TidusModel/Tidus.obj");
+	//scene.renderables.push_back(std::make_shared<Mesh>(&tidusShader, &tidusModel));
 	//scene.renderables.back()->modelToWorld(rotateY(M_PI / 4.0f));
 
 	// *** Add lights to scene ***
-	Eigen::Vector3f ambientLight(.1f, .1f, .1f);
+	Eigen::Vector3f ambientLight(1.f, 1.f, 1.f);
 
 	std::vector<std::unique_ptr<Light>> lightSources;
 	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 3.f, -1.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));
