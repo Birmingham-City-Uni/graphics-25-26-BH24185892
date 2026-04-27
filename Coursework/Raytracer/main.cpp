@@ -65,9 +65,10 @@ int main(int argc, char* argv[]) {
 
 	// *** Load shaders and textures ***
 	
+	unsigned int width, height;
+
 	//Tidus
 	std::vector<uint8_t> TidusTexture;
-	unsigned int width, height;
 	lodepng::decode(TidusTexture, width, height, "../models/TidusModel/TidusTex.png");
 	TexturedLambertianShader tidusShader(&TidusTexture, width, height);
 
@@ -80,6 +81,26 @@ int main(int argc, char* argv[]) {
 	lodepng::decode(YunaTexture, width, height, "../models/YunaModel/YunaTex.png");
 	TexturedLambertianShader yunaShader(&YunaTexture, width, height);
 
+	//Water
+	std::vector<uint8_t> WaterTexture;
+	lodepng::decode(WaterTexture, width, height, "../models/Assets/Water/Water.png");
+	TexturedLambertianShader waterShader(&WaterTexture, width, height);
+
+	//BG
+	std::vector<uint8_t> BGTexture;
+	lodepng::decode(BGTexture, width, height, "../models/Assets/BG/BG.png");
+	TexturedLambertianShader bgShader(&BGTexture, width, height);
+
+	//Branch
+	std::vector<uint8_t> BranchTexture;
+	lodepng::decode(BranchTexture, width, height, "../models/Assets/Branch/Branch.png");
+	TexturedLambertianShader branchShader(&BranchTexture, width, height);
+
+	//Crystals
+	std::vector<uint8_t> CrystalsTexture;
+	lodepng::decode(CrystalsTexture, width, height, "../models/Assets/Crystals/CrystalsTex.png");
+	TexturedLambertianShader crystalsShader(&CrystalsTexture, width, height);
+
 	LambertianShader redLambertianShader(red);
 	PhongShader bluePlasticShader(blue, Eigen::Vector3f(1.f, 1.f, 1.f), 100.f);
 	LambertianShader aquaLambertianShader(aqua);
@@ -91,15 +112,37 @@ int main(int argc, char* argv[]) {
 	// *** Set up scene ***
 	Scene scene;
 
+	Eigen::Matrix4f ModelsTransform = makeTranslationMatrix(Eigen::Vector3f(-.1f, -.2f, -4.3f));
+	Eigen::Matrix4f BCTransform = makeTranslationMatrix(Eigen::Vector3f(-.6f, -.15f, -0.4f));
+	Eigen::Matrix4f CrystalTransform = makeTranslationMatrix(Eigen::Vector3f(-0.3f, -.2f, -0.9f));
+	Eigen::Matrix4f WaterTransform = makeTranslationMatrix(Eigen::Vector3f(-1.5f, -.2f, -2.f)) * rotateY(M_PI / 10.0f) * uniformScale(2.f);
+	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(-2.f, -.2f, 1.f)) * rotateY(M_PI) * uniformScale(5.f);
 	// Optional code: here's how to add the spot mesh to the scene, using a BVH
 	// Try enabling this and comparing it to the non-BVH version below!
 	Model tidusModel("../models/TidusModel/Tidus.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(tidusModel, &tidusShader, 4, rotateY(0)));
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusModel, &tidusShader, 4, ModelsTransform));
 	Model tidusArmModel("../models/TidusModel/TidusArm.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(tidusArmModel, &tidusArmShader, 4, rotateY(0)));
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusArmModel, &tidusArmShader, 4, ModelsTransform));
 
 	Model yunaModel("../models/YunaModel/Yuna.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(yunaModel, &yunaShader, 4, rotateY(0)));
+	scene.renderables.push_back(std::make_shared<BVHNode>(yunaModel, &yunaShader, 4, ModelsTransform));
+
+	Model waterModel("../models/Assets/Water/Water.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(waterModel, &waterShader, 4, WaterTransform));
+
+	Model bgModel("../models/Assets/BG/BG.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(bgModel, &bgShader, 4, BGTransform));
+
+	Model branchModel("../models/Assets/Branch/Branch.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(branchModel, &branchShader, 4, BCTransform));
+	
+	Model Crystal2Model("../models/Assets/Crystals/Crystal2.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal2Model, &crystalsShader, 4, BCTransform));
+
+	Model Crystal1Model("../models/Assets/Crystals/Untitled.obj");
+	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal1Model, &crystalsShader, 4, CrystalTransform));
+
+	
 	
 	// Here's how to add the mesh without using the BVH.
 	// Try comparing performance to the BVH version above.

@@ -1,0 +1,12 @@
+# Blender 5.1.1 MTL File: 'None'
+# www.blender.org
+
+newmtl Material.003
+Ns 0.000000
+Ka 0.169231 0.169231 0.169231
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.000000
+d 0.569231
+illum 6
+map_Kd C:/Users/S24185892/Documents/GitHub/graphics-25-26-BH24185892/Coursework/Pathtracer/Assests/Crystal/Material.001_baseColor.png
