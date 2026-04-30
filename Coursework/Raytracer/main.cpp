@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
 	Eigen::Matrix4f BCTransform = makeTranslationMatrix(Eigen::Vector3f(-.6f, -.15f, -0.4f));
 	Eigen::Matrix4f CrystalTransform = makeTranslationMatrix(Eigen::Vector3f(-0.3f, -.2f, -0.9f));
 	Eigen::Matrix4f WaterTransform = makeTranslationMatrix(Eigen::Vector3f(-1.5f, -.2f, -2.f)) * rotateY(M_PI / 10.0f) * uniformScale(2.f);
-	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(-2.f, -.2f, 1.f)) * rotateY(M_PI) * uniformScale(5.f);
+	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(-2.f, -.2f, -8.f)) * rotateY(M_PI) * uniformScale(5.f);
 	// Optional code: here's how to add the spot mesh to the scene, using a BVH
 	// Try enabling this and comparing it to the non-BVH version below!
 	Model tidusModel("../models/TidusModel/Tidus.obj");
