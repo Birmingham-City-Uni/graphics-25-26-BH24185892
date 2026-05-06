@@ -49,7 +49,8 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	const std::vector<std::unique_ptr<Light>>& lights,
 	const Eigen::Vector3f& albedo, const Eigen::Vector3f& specularColor,
 	float specularExponent,
-	const Eigen::Vector3f& camWorldPos)
+	const Eigen::Vector3f& camWorldPos,
+	bool backfaceCull = true)
 {
 	int minX, minY, maxX, maxY;
 	findScreenBoundingBox(t, width, height, minX, minY, maxX, maxY);
@@ -57,11 +58,10 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	Eigen::Vector2f edge1 = v2(t.screen[2] - t.screen[0]);
 	Eigen::Vector2f edge2 = v2(t.screen[1] - t.screen[0]);
 	float triangleArea = 0.5f * vec2Cross(edge2, edge1);
-	if (triangleArea < 0) {
-		// Triangle is backfacing
-		// Exit and quit drawing!
+	if (backfaceCull && triangleArea < 0) {
 		return;
 	}
+	triangleArea = fabsf(triangleArea); // use absolute area for barycentric math
 
 	for (int x = minX; x <= maxX; ++x)
 		for (int y = minY; y <= maxY; ++y) {
@@ -177,8 +177,6 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.verts[1] = (modelToWorld * vec3ToVec4(v1)).block<3, 1>(0, 0);
 		t.verts[2] = (modelToWorld * vec3ToVec4(v2)).block<3, 1>(0, 0);
 
-		// Work out the clip space coordinates, by multiplying by worldToClip and doing the 
-		// perspective divide.
 		Eigen::Vector4f vClip0 = worldToClip * modelToWorld * vec3ToVec4(v0);
 		vClip0 /= vClip0.w();
 		Eigen::Vector4f vClip1 = worldToClip * modelToWorld * vec3ToVec4(v1);
@@ -186,16 +184,20 @@ void drawMesh(std::vector<unsigned char>& image,
 		Eigen::Vector4f vClip2 = worldToClip * modelToWorld * vec3ToVec4(v2);
 		vClip2 /= vClip2.w();
 
-		// Check that all 3 vertices are in the clip box (-1 to 1 in x, y and z) and if not,
-		// skip drawing this triangle.
-		if (outsideClipBox(vClip0) || outsideClipBox(vClip1) || outsideClipBox(vClip2)) continue;
+		// Only skip if ALL 3 vertices are outside the SAME clip plane
+		bool cull =
+			(vClip0.x() < -1.f && vClip1.x() < -1.f && vClip2.x() < -1.f) ||
+			(vClip0.x() >  1.f && vClip1.x() >  1.f && vClip2.x() >  1.f) ||
+			(vClip0.y() < -1.f && vClip1.y() < -1.f && vClip2.y() < -1.f) ||
+			(vClip0.y() >  1.f && vClip1.y() >  1.f && vClip2.y() >  1.f) ||
+			(vClip0.z() < -1.f && vClip1.z() < -1.f && vClip2.z() < -1.f) ||
+			(vClip0.z() >  1.f && vClip1.z() >  1.f && vClip2.z() >  1.f);
+		if (cull) continue;
 
-		// Work out the screen space coordinates based on the image height and width.
 		t.screen[0] = Eigen::Vector3f((vClip0.x() + 1.0f) * width / 2, (-vClip0.y() + 1.0f) * height / 2, vClip0.z());
 		t.screen[1] = Eigen::Vector3f((vClip1.x() + 1.0f) * width / 2, (-vClip1.y() + 1.0f) * height / 2, vClip1.z());
 		t.screen[2] = Eigen::Vector3f((vClip2.x() + 1.0f) * width / 2, (-vClip2.y() + 1.0f) * height / 2, vClip2.z());
 
-		// transform the normals (using the inverse transpose of the upper 3x3 block)
 		t.norms[0] = (modelToWorld.block<3, 3>(0, 0).inverse().transpose() * n0).normalized();
 		t.norms[1] = (modelToWorld.block<3, 3>(0, 0).inverse().transpose() * n1).normalized();
 		t.norms[2] = (modelToWorld.block<3, 3>(0, 0).inverse().transpose() * n2).normalized();
@@ -233,7 +235,7 @@ int main()
 	Eigen::Matrix4f projection = projectionMatrix(height, width);
 
 	// This matrix rotates the camera, tilting it down, then translates it up to make it look down on the scene.
-	Eigen::Matrix4f cameraToWorld = translationMatrix(Eigen::Vector3f(0.f, 0.8f, 0.f)) * rotateXMatrix(0.4f);
+	Eigen::Matrix4f cameraToWorld = translationMatrix(Eigen::Vector3f(0.1f, -0.7f, 2.f));
 
 	Eigen::Vector3f camWorldPos = (cameraToWorld * Eigen::Vector4f(0, 0, 0, 1)).block<3, 1>(0, 0);
 
@@ -247,7 +249,6 @@ int main()
 
 	std::string TidusModel = "../models/TidusModel/Tidus.obj";
 	std::string TidusArmModel = "../models/TidusModel/TidusArm.obj";
-
 	std::string YunaModel = "../models/YunaModel/Yuna.obj";
 
 	std::string BGModel = "../models/Assets/BG/BG.obj";
@@ -261,7 +262,7 @@ int main()
 	std::vector<std::unique_ptr<Light>> lights;
 	//lights.emplace_back(new AmbientLight(Eigen::Vector3f(0.1f, 0.1f, 0.1f)));
 	lights.emplace_back(new DirectionalLight(Eigen::Vector3f(0.4f, 0.4f, 0.4f), Eigen::Vector3f(1.f, -1.f, 0.0f)));
-	lights.emplace_back(new AmbientLight(Eigen::Vector3f(5.f, 5.f, 5.f)));
+	lights.emplace_back(new AmbientLight(Eigen::Vector3f(2.f, 2.f, 2.f)));
 
 	Mesh TidusMesh = loadMeshFile(TidusModel);
 	Mesh TidusArmMesh = loadMeshFile(TidusArmModel);
@@ -274,6 +275,7 @@ int main()
 	Mesh Crystal2Mesh = loadMeshFile(Crystal2Model);
 	Mesh WaterMesh = loadMeshFile(WaterModel);
 
+	//Models
 	Eigen::Matrix4f ModelsTransform;
 	ModelsTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
 	// .... and change the specular exponent here!
@@ -289,25 +291,17 @@ int main()
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		ModelsTransform, worldToClip, lights, width, height);
 
-
-	Eigen::Matrix4f BGTransform;
-	BGTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
-
-	drawMesh(imageBuffer, zBuffer, BGMesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
-		BGTransform, worldToClip, lights, width, height);
-
-
+	//Branch
 	Eigen::Matrix4f BranchTransform;
-	BranchTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
+	BranchTransform = translationMatrix(Eigen::Vector3f(-.63f, -0.98f, 7.f));
 
-	drawMesh(imageBuffer, zBuffer, BranchMesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
+	drawMesh(imageBuffer, zBuffer, BranchMesh, Eigen::Vector3f(0.5f, 0.0f, 0.f),
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		BranchTransform, worldToClip, lights, width, height);
 
-
+	//Crystals
 	Eigen::Matrix4f CrystalTransform;
-	CrystalTransform = translationMatrix(Eigen::Vector3f(-0.3f, -1.0f, -0.9f));
+	CrystalTransform = translationMatrix(Eigen::Vector3f(-.68f, -0.98f, 7.f));
 
 	drawMesh(imageBuffer, zBuffer, Crystal1Mesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
@@ -317,12 +311,19 @@ int main()
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		CrystalTransform, worldToClip, lights, width, height);
 
-
+	//Water
 	Eigen::Matrix4f WaterTransform;
-	WaterTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
-	drawMesh(imageBuffer, zBuffer, WaterMesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
+	WaterTransform = translationMatrix(Eigen::Vector3f(0.0f, -0.87f, 2.f)) * scaleMatrix(1.5f);
+	drawMesh(imageBuffer, zBuffer, WaterMesh, Eigen::Vector3f(0.0f, 0.0f, 0.5f),
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		WaterTransform, worldToClip, lights, width, height);
+
+	//Background
+	Eigen::Matrix4f BGTransform;
+	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -0.8f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
+	drawMesh(imageBuffer, zBuffer, BGMesh, Eigen::Vector3f(0.f, 0.5f, -0.5f),
+		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+		BGTransform, worldToClip, lights, width, height);
 
 
 	// For debug - draw point lights as colored circles so we can see where they are
