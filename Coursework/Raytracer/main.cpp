@@ -14,6 +14,7 @@
 #include "LambertianShader.hpp"
 #include "TexturedLambertianShader.hpp"
 #include "PhongShader.hpp"
+#include "TexturedPhongShader.hpp"
 #include "MirrorShader.hpp"
 #include "TexCoordTestShader.hpp"
 #include "Model.hpp"
@@ -74,8 +75,8 @@ int main(int argc, char* argv[]) {
 
 	std::vector<uint8_t> TidusArmTexture;
 	lodepng::decode(TidusArmTexture, width, height, "../models/TidusModel/TidusArm.png");
-	TexturedLambertianShader tidusArmShader(&TidusArmTexture, width, height);
-
+	TexturedPhongShader tidusArmShader(&TidusArmTexture, width, height, Eigen::Vector3f(8.f, 8.f, 8.f), 45.f);
+	
 	//Yuna
 	std::vector<uint8_t> YunaTexture;
 	lodepng::decode(YunaTexture, width, height, "../models/YunaModel/YunaTex.png");
@@ -99,10 +100,10 @@ int main(int argc, char* argv[]) {
 	//Crystals
 	std::vector<uint8_t> CrystalsTexture;
 	lodepng::decode(CrystalsTexture, width, height, "../models/Assets/Crystals/CrystalsTex.png");
-	TexturedLambertianShader crystalsShader(&CrystalsTexture, width, height);
+	TexturedPhongShader crystalsShader(&CrystalsTexture, width, height, Eigen::Vector3f(8.f, 8.f, 8.f), 15.f);
 
 	LambertianShader redLambertianShader(red);
-	PhongShader bluePlasticShader(blue, Eigen::Vector3f(1.f, 1.f, 1.f), 100.f);
+	PhongShader bluePlasticShader(blue, Eigen::Vector3f(1.f, 1.f, 1.f), 1.f);
 	LambertianShader aquaLambertianShader(aqua);
 	LambertianShader lavenderLambertianShader(lavender);
 	
@@ -116,7 +117,7 @@ int main(int argc, char* argv[]) {
 	Eigen::Matrix4f BCTransform = makeTranslationMatrix(Eigen::Vector3f(-.6f, -.15f, -0.4f));
 	Eigen::Matrix4f CrystalTransform = makeTranslationMatrix(Eigen::Vector3f(-0.3f, -.2f, -0.9f));
 	Eigen::Matrix4f WaterTransform = makeTranslationMatrix(Eigen::Vector3f(-1.5f, -.2f, -2.f)) * rotateY(M_PI / 10.0f) * uniformScale(2.f);
-	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(-2.f, -.2f, -8.f)) * rotateY(M_PI) * uniformScale(5.f);
+	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(1.12f, -.2f, -13.f)) * rotateY(M_PI) * uniformScale(5.f);
 	// Optional code: here's how to add the spot mesh to the scene, using a BVH
 	// Try enabling this and comparing it to the non-BVH version below!
 	Model tidusModel("../models/TidusModel/Tidus.obj");
@@ -142,20 +143,20 @@ int main(int argc, char* argv[]) {
 	Model Crystal1Model("../models/Assets/Crystals/Untitled.obj");
 	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal1Model, &crystalsShader, 4, CrystalTransform));
 
-	
-	
-	// Here's how to add the mesh without using the BVH.
-	// Try comparing performance to the BVH version above.
-	//Model tidusModel("../models/TidusModel/Tidus.obj");
-	//scene.renderables.push_back(std::make_shared<Mesh>(&tidusShader, &tidusModel));
-	//scene.renderables.back()->modelToWorld(rotateY(M_PI / 4.0f));
 
 	// *** Add lights to scene ***
-	Eigen::Vector3f ambientLight(1.f, 1.f, 1.f);
+	Eigen::Vector3f ambientLight(.01f, .01f, .01f);
 
 	std::vector<std::unique_ptr<Light>> lightSources;
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 3.f, -1.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.f, 1.f, -4.5f), 1.f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Front
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-.048f, -0.07f, -4.4f), .005f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Between Models
 	lightSources.push_back(std::make_unique<DirectionalLight>(Eigen::Vector3f(0.f, -1.f, 1.f), .5f * Eigen::Vector3f(1.f, 1.f, 1.f)));
+
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 0.2f, -3.2f), .3f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Front Crystal
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.6f, 0.0001f, -2.7f), .02f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Back Crystal
+
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.8f, 2.f, -2.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Left Tree
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(1.2f, 2.f, -2.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Right Tree
 
 	// *** Render the scene ***
 

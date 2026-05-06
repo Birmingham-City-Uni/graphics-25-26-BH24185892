@@ -28,6 +28,7 @@ set(SHADERS_SOURCE_GROUP
     Shader.hpp
     LambertianShader.hpp
     TexturedLambertianShader.hpp
+    TexturedPhongShader.hpp
     PhongShader.hpp
     MirrorShader.hpp
     TexCoordTestShader.hpp
