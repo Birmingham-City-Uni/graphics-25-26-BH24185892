@@ -145,23 +145,23 @@ int main(int argc, char* argv[]) {
 
 
 	// *** Add lights to scene ***
-	Eigen::Vector3f ambientLight(.01f, .01f, .01f);
+	Eigen::Vector3f ambientLight(0.01f,0.01f,0.01f);
 
 	std::vector<std::unique_ptr<Light>> lightSources;
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.f, 1.f, -4.5f), 1.f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Front
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-.048f, -0.07f, -4.4f), .005f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Between Models
-	lightSources.push_back(std::make_unique<DirectionalLight>(Eigen::Vector3f(0.f, -1.f, 1.f), .5f * Eigen::Vector3f(1.f, 1.f, 1.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.f, 1.f, -4.5f), .1f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Front
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-.048f, -0.07f, -4.4f), .003f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Between Models
+	lightSources.push_back(std::make_unique<DirectionalLight>(Eigen::Vector3f(0.f, -1.f, 1.f), 0.8f * Eigen::Vector3f(1.f, 1.f, 1.f)));
 
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 0.2f, -3.2f), .3f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Front Crystal
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.6f, 0.0001f, -2.7f), .02f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Back Crystal
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 0.1f, -3.2f), .05f * Eigen::Vector3f(1.f, 1.f, 2.f)));//Front Crystal
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.6f, 0.0001f, -2.7f), .008f * Eigen::Vector3f(1.f, 1.f, 2.f)));//Back Crystal
 
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.8f, 2.f, -2.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Left Tree
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(1.2f, 2.f, -2.f), 3.f * Eigen::Vector3f(1.f, 1.f, 1.f)));//Right Tree
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(2.5f, 4.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));//Left Tree
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(5.9f, 3.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));//Right Tree 
 
 	// *** Render the scene ***
 
 	// Shuffling the scanline order gets better CPU usage between threads
-	// when some lines take longer to render than others.
+	// when some lines take longer to render than others.//
 	std::vector<unsigned int> scanlines(pixHeight);
 	for (int i = 0; i < pixHeight; ++i) scanlines[i] = i;
 
