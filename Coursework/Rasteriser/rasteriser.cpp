@@ -47,7 +47,8 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	std::vector<float>& zBuffer,
 	const Triangle& t,
 	const std::vector<std::unique_ptr<Light>>& lights,
-	const Eigen::Vector3f& albedo, const Eigen::Vector3f& specularColor,
+	const std::vector<uint8_t>& albedoTexture, int texWidth, int texHeight, 
+	const Eigen::Vector3f& specularColor,
 	float specularExponent,
 	const Eigen::Vector3f& camWorldPos,
 	bool backfaceCull = true)
@@ -93,6 +94,24 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 			Eigen::Vector3f normP = t.norms[0] * b0 + t.norms[1] * b1 + t.norms[2] * b2;
 			normP.normalize();
 
+			// Two-sided lighting: flip normal if it faces away from the camera
+			Eigen::Vector3f viewDir = (camWorldPos - worldP).normalized();
+			if (normP.dot(viewDir) < 0.0f) normP = -normP;
+
+			Eigen::Vector2f texP = t.texs[0] * b0 + t.texs[1] * b1 + t.texs[2] * b2;
+
+			//Texture Mapping
+			int texC = (int)(texP.x() * texWidth);
+			int texR = (int)((1.0f - texP.y()) * texHeight);
+			texC = std::max(0, std::min(texC, texWidth - 1));
+			texR = std::max(0, std::min(texR, texHeight - 1));
+
+			// Get the value from the texture (hint: use the getPixel function on the albedoTexture).
+			Color texColor = getPixel(albedoTexture, texC, texR, texWidth, texHeight);;
+
+			// Convert it into an Eigen::Vector3f as an albedo
+			Eigen::Vector3f albedo(powf(texColor.r / 255.0f, 2.2f), powf(texColor.g / 255.0f, 2.2f), powf(texColor.b / 255.0f, 2.2f));
+
 			// Work out colour at this position.
 			Eigen::Vector3f color = Eigen::Vector3f::Zero();
 
@@ -107,15 +126,12 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 				// We only need to do the following if the light isn't an ambient light.
 				if (light->getType() != Light::Type::AMBIENT) {
 
-					// Subtask 3: Work out correct inputs for the phongSpecularTerm function inside drawTriangle, and draw an image!
-					// *** YOUR CODE HERE ***
 					// Work out the incoming light dir (from the light into the surface point).
 					Eigen::Vector3f incomingLightDir = light->getDirection(worldP);
 					// Work out the view direction (from surface point towards camera). Make sure it's normalized!
 					Eigen::Vector3f viewDir = (camWorldPos - worldP).normalized();
 					// Find the specular term by calling phongSpecularTerm.
-					float specularTerm = phongSpecularTerm(incomingLightDir, normP, viewDir, specularExponent);
-					// *** END YOUR CODE ***
+					float specularTerm = blinnPhongSpecularTerm(incomingLightDir, normP, viewDir, specularExponent);
 
 					Eigen::Vector3f specularOut = specularColor * specularTerm;
 					specularOut = coeffWiseMultiply(specularOut, lightIntensity);
@@ -154,7 +170,8 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 void drawMesh(std::vector<unsigned char>& image,
 	std::vector<float>& zBuffer,
 	const Mesh& mesh,
-	const Eigen::Vector3f& albedo, const Eigen::Vector3f& specularColor,
+	const std::vector<uint8_t>& albedoTexture, int texWidth, int texHeight,
+	const Eigen::Vector3f& specularColor,
 	float specularExponent,
 	const Eigen::Vector3f& camWorldPos,
 	const Eigen::Matrix4f& modelToWorld,
@@ -184,7 +201,7 @@ void drawMesh(std::vector<unsigned char>& image,
 		Eigen::Vector4f vClip2 = worldToClip * modelToWorld * vec3ToVec4(v2);
 		vClip2 /= vClip2.w();
 
-		// Only skip if ALL 3 vertices are outside the SAME clip plane
+		//check if all vertices are outside the same clip plane
 		bool cull =
 			(vClip0.x() < -1.f && vClip1.x() < -1.f && vClip2.x() < -1.f) ||
 			(vClip0.x() >  1.f && vClip1.x() >  1.f && vClip2.x() >  1.f) ||
@@ -206,10 +223,9 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.texs[1] = mesh.texs[mesh.tFaces[i][1]];
 		t.texs[2] = mesh.texs[mesh.tFaces[i][2]];
 
-		drawTriangle(image, width, height, zBuffer, t, lights, albedo, specularColor, specularExponent, camWorldPos);
+		drawTriangle(image, width, height, zBuffer, t, lights, albedoTexture, texWidth, texHeight, specularColor, specularExponent, camWorldPos);
 	}
 }
-
 
 int main()
 {
@@ -221,8 +237,6 @@ int main()
 	// Set up an image buffer
 	std::vector<uint8_t> imageBuffer(height*width*nChannels);
 	std::vector<float> zBuffer(height * width);
-
-    // **** Replace this bit with your lovely rasteriser code ****
 
 	Color black{ 0,0,0,255 };
 	for (int r = 0; r < height; ++r) {
@@ -239,14 +253,15 @@ int main()
 
 	Eigen::Vector3f camWorldPos = (cameraToWorld * Eigen::Vector4f(0, 0, 0, 1)).block<3, 1>(0, 0);
 
-	// The main important task = set up the worldToCamera and worldToClip matrices here!
 	// Set up worldToCamera, based on cameraToWorld above
 	Eigen::Matrix4f worldToCamera = cameraToWorld.inverse();
 	// Set up worldToClip, using the projection and worldToCamera matrices
 	Eigen::Matrix4f worldToClip = projection * worldToCamera;
 
-	// *** END YOUR CODE ***
 
+	//Scene setup
+
+	//Models
 	std::string TidusModel = "../models/TidusModel/Tidus.obj";
 	std::string TidusArmModel = "../models/TidusModel/TidusArm.obj";
 	std::string YunaModel = "../models/YunaModel/Yuna.obj";
@@ -257,13 +272,52 @@ int main()
 	std::string Crystal2Model = "../models/Assets/Crystals/Crystal2.obj";
 	std::string WaterModel = "../models/Assets/Water/Water.obj";
 
-	// Subtask 4: Try re-rendering your image with different lighting setups, and specular exponents, and see how it changes!
-	// You can modify the lighting setup here....
-	std::vector<std::unique_ptr<Light>> lights;
-	//lights.emplace_back(new AmbientLight(Eigen::Vector3f(0.1f, 0.1f, 0.1f)));
-	lights.emplace_back(new DirectionalLight(Eigen::Vector3f(0.4f, 0.4f, 0.4f), Eigen::Vector3f(1.f, -1.f, 0.0f)));
-	lights.emplace_back(new AmbientLight(Eigen::Vector3f(2.f, 2.f, 2.f)));
 
+	//Textures
+	std::vector<uint8_t> TidusTexture;
+	unsigned int TidusTexWidth, TidusTexHeight;
+	lodepng::decode(TidusTexture, TidusTexWidth, TidusTexHeight, "../models/TidusModel/TidusTex.png");
+	std::vector<uint8_t> TidusArmTexture;
+	unsigned int TidusArmTexWidth, TidusArmTexHeight;
+	lodepng::decode(TidusArmTexture, TidusArmTexWidth, TidusArmTexHeight, "../models/TidusModel/TidusArm.png");
+	std::vector<uint8_t> YunaTexture;
+	unsigned int YunaTexWidth, YunaTexHeight;
+	lodepng::decode(YunaTexture, YunaTexWidth, YunaTexHeight, "../models/YunaModel/YunaTex.png");
+
+	std::vector<uint8_t> BGTexture;
+	unsigned int BGTexWidth, BGTexHeight;
+	lodepng::decode(BGTexture, BGTexWidth, BGTexHeight, "../models/Assets/BG/BG.png");
+
+	std::vector<uint8_t> BranchTexture;
+	unsigned int BranchTexWidth, BranchTexHeight;
+	lodepng::decode(BranchTexture, BranchTexWidth, BranchTexHeight, "../models/Assets/Branch/Branch.png");
+
+	std::vector<uint8_t> CrystalTexture;
+	unsigned int CrystalTexWidth, CrystalTexHeight;
+	lodepng::decode(CrystalTexture, CrystalTexWidth, CrystalTexHeight, "../models/Assets/Crystals/CrystalsTex.png");
+
+	std::vector<uint8_t> WaterTexture;
+	unsigned int WaterTexWidth, WaterTexHeight;
+	lodepng::decode(WaterTexture, WaterTexWidth, WaterTexHeight, "../models/Assets/Water/Water.png");
+
+
+	//Lights
+	std::vector<std::unique_ptr<Light>> lights;
+	lights.emplace_back(new DirectionalLight(Eigen::Vector3f(0.3f, 0.3f, 0.3f), Eigen::Vector3f(1.f, -1.f, 0.0f)));
+	lights.emplace_back(new AmbientLight(Eigen::Vector3f(.05f, .05f, .05f)));
+
+	//crystal lights
+	lights.emplace_back(new PointLight(Eigen::Vector3f(1.2f, 2.0f, 3.0f) * 0.2f, Eigen::Vector3f(-1.428f, -0.8f, 4.614f)));
+	lights.emplace_back(new PointLight(Eigen::Vector3f(1.2f, 2.f, 3.0f) * 0.2f, Eigen::Vector3f(-1.752f, -.9f, 4.870f)));
+
+	//Model lights
+	lights.emplace_back(new PointLight(Eigen::Vector3f(1.0f, 0.95f, 0.85f) * 0.3f, Eigen::Vector3f(0.076f, -0.4f, 2.989f)));
+
+	//BG lights
+	lights.emplace_back(new PointLight(Eigen::Vector3f(8.f, 2.f, 1.f) * .5f, Eigen::Vector3f(1.55f, 1.3f, 7.5f)));
+	lights.emplace_back(new PointLight(Eigen::Vector3f(8.f, 2.f, 1.f) * .3f, Eigen::Vector3f(2.7f, .6f, 7.5f)));
+	
+	//Meshes
 	Mesh TidusMesh = loadMeshFile(TidusModel);
 	Mesh TidusArmMesh = loadMeshFile(TidusArmModel);
 
@@ -275,62 +329,57 @@ int main()
 	Mesh Crystal2Mesh = loadMeshFile(Crystal2Model);
 	Mesh WaterMesh = loadMeshFile(WaterModel);
 
+	//Rendering 
+	
+	//Background
+	Eigen::Matrix4f BGTransform;
+	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -0.8f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
+	drawMesh(imageBuffer, zBuffer, BGMesh, BGTexture, BGTexWidth, BGTexHeight,
+		Eigen::Vector3f::Ones() * 1.0f, 50.f, camWorldPos,
+		BGTransform, worldToClip, lights, width, height);
+
 	//Models
 	Eigen::Matrix4f ModelsTransform;
 	ModelsTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
-	// .... and change the specular exponent here!
-	drawMesh(imageBuffer, zBuffer, TidusMesh, Eigen::Vector3f(0.f, 0.5f, 0.8f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+	drawMesh(imageBuffer, zBuffer, TidusMesh, TidusTexture, TidusTexWidth, TidusTexHeight,
+		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
 		ModelsTransform, worldToClip, lights, width, height);
 
-	drawMesh(imageBuffer, zBuffer, TidusArmMesh, Eigen::Vector3f(0.f, 0.5f, 0.8f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+	drawMesh(imageBuffer, zBuffer, TidusArmMesh, TidusArmTexture, TidusArmTexWidth, TidusArmTexHeight,
+		Eigen::Vector3f::Ones() * 1.0f, 20.f, camWorldPos,
 		ModelsTransform, worldToClip, lights, width, height);
 
-	drawMesh(imageBuffer, zBuffer, YunaMesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+	drawMesh(imageBuffer, zBuffer, YunaMesh, YunaTexture, YunaTexWidth, YunaTexHeight,
+		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
 		ModelsTransform, worldToClip, lights, width, height);
 
 	//Branch
 	Eigen::Matrix4f BranchTransform;
 	BranchTransform = translationMatrix(Eigen::Vector3f(-.63f, -0.98f, 7.f));
 
-	drawMesh(imageBuffer, zBuffer, BranchMesh, Eigen::Vector3f(0.5f, 0.0f, 0.f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+	drawMesh(imageBuffer, zBuffer, BranchMesh, BranchTexture, BranchTexWidth, BranchTexHeight,
+		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
 		BranchTransform, worldToClip, lights, width, height);
 
 	//Crystals
 	Eigen::Matrix4f CrystalTransform;
 	CrystalTransform = translationMatrix(Eigen::Vector3f(-.68f, -0.98f, 7.f));
 
-	drawMesh(imageBuffer, zBuffer, Crystal1Mesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
+	drawMesh(imageBuffer, zBuffer, Crystal1Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight,
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		CrystalTransform, worldToClip, lights, width, height);
 
-	drawMesh(imageBuffer, zBuffer, Crystal2Mesh, Eigen::Vector3f(0.8f, 0.5f, 0.f),
+	drawMesh(imageBuffer, zBuffer, Crystal2Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight,
 		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
 		CrystalTransform, worldToClip, lights, width, height);
 
 	//Water
 	Eigen::Matrix4f WaterTransform;
 	WaterTransform = translationMatrix(Eigen::Vector3f(0.0f, -0.87f, 2.f)) * scaleMatrix(1.5f);
-	drawMesh(imageBuffer, zBuffer, WaterMesh, Eigen::Vector3f(0.0f, 0.0f, 0.5f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
+	drawMesh(imageBuffer, zBuffer, WaterMesh, WaterTexture, WaterTexWidth, WaterTexHeight,
+		Eigen::Vector3f::Ones() * 0.4f, 2000.f, camWorldPos,
 		WaterTransform, worldToClip, lights, width, height);
 
-	//Background
-	Eigen::Matrix4f BGTransform;
-	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -0.8f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
-	drawMesh(imageBuffer, zBuffer, BGMesh, Eigen::Vector3f(0.f, 0.5f, -0.5f),
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
-		BGTransform, worldToClip, lights, width, height);
-
-
-	// For debug - draw point lights as colored circles so we can see where they are
-	drawPointLights(imageBuffer, width, height, lights);
-  
-
-    // **** End lovely rasteriser code ****
 
     // Save the image
     int errorCode;
