@@ -1,12 +1,12 @@
-# Blender 5.1.1 MTL File: 'None'
+# Blender 5.1.0 MTL File: 'Scene.blend'
 # www.blender.org
 
 newmtl YunaMat
-Ns 11.663996
+Ns 54.675457
 Ka 0.623000 0.623000 0.623000
 Ks 0.500000 0.500000 0.500000
 Ke 0.000000 0.000000 0.000000
 Ni 1.500000
 d 1.000000
 illum 3
-map_Kd C:/Users/S24185892/Documents/GitHub/graphics-25-26-BH24185892/Coursework/Pathtracer/Yuna Model/YunaTex.png
+map_Kd C:/Users/benha/Documents/UNI/Y2 Graphics/graphics-25-26-BH24185892/Coursework/Pathtracer/Yuna Model/YunaTex.png

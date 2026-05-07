@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
 	Model Crystal2Model("../models/Assets/Crystals/Crystal2.obj");
 	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal2Model, &crystalsShader, 4, BCTransform));
 
-	Model Crystal1Model("../models/Assets/Crystals/Untitled.obj");
+	Model Crystal1Model("../models/Assets/Crystals/Crystal1.obj");
 	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal1Model, &crystalsShader, 4, CrystalTransform));
 
 

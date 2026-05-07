@@ -1,4 +1,4 @@
-# Blender 5.1.1 MTL File: 'None'
+# Blender 5.1.0 MTL File: 'Scene.blend'
 # www.blender.org
 
 newmtl Water.001
@@ -9,4 +9,4 @@ Ke 0.000000 0.000000 0.000000
 Ni 4.400000
 d 0.900000
 illum 6
-map_Kd C:/Users/S24185892/Documents/GitHub/graphics-25-26-BH24185892/Coursework/Pathtracer/Assests/Water/Water.jpg
+map_Kd C:/Users/benha/Documents/UNI/Y2 Graphics/graphics-25-26-BH24185892/Coursework/Pathtracer/Assests/Water/Water.jpg
