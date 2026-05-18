@@ -11,10 +11,11 @@
 #include "Shading.hpp"
 
 struct Triangle {
-	std::array<Eigen::Vector3f, 3> screen; // Coordinates of the triangle in screen space.
-	std::array<Eigen::Vector3f, 3> verts; // Vertices of the triangle in world space.
-	std::array<Eigen::Vector3f, 3> norms; // Normals of the triangle corners in world space.
-	std::array<Eigen::Vector2f, 3> texs; // Texture coordinates of the triangle corners.
+	std::array<Eigen::Vector3f, 3> screen;
+	std::array<float, 3> clipW;           // <-- add this
+	std::array<Eigen::Vector3f, 3> verts;
+	std::array<Eigen::Vector3f, 3> norms;
+	std::array<Eigen::Vector2f, 3> texs;
 };
 
 Eigen::Matrix4f projectionMatrix(int height, int width, float horzFov = 70.f * M_PI / 180.f, float zFar = 10.f, float zNear = 0.1f)
@@ -47,7 +48,7 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	std::vector<float>& zBuffer,
 	const Triangle& t,
 	const std::vector<std::unique_ptr<Light>>& lights,
-	const std::vector<uint8_t>& albedoTexture, int texWidth, int texHeight, 
+	const std::vector<uint8_t>& albedoTexture, int texWidth, int texHeight,
 	const Eigen::Vector3f& specularColor,
 	float specularExponent,
 	const Eigen::Vector3f& camWorldPos,
@@ -62,108 +63,69 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 	if (backfaceCull && triangleArea < 0) {
 		return;
 	}
-	triangleArea = fabsf(triangleArea); // use absolute area for barycentric math
+	triangleArea = fabsf(triangleArea);
 
 	for (int x = minX; x <= maxX; ++x)
 		for (int y = minY; y <= maxY; ++y) {
 			Eigen::Vector2f p(x, y);
 
-			// Find sub-triangle areas
 			float a0 = 0.5f * fabsf(vec2Cross(v2(t.screen[1]) - v2(t.screen[2]), p - v2(t.screen[2])));
 			float a1 = 0.5f * fabsf(vec2Cross(v2(t.screen[0]) - v2(t.screen[2]), p - v2(t.screen[2])));
 			float a2 = 0.5f * fabsf(vec2Cross(v2(t.screen[0]) - v2(t.screen[1]), p - v2(t.screen[1])));
 
-			// find barycentrics
 			float b0 = a0 / triangleArea;
 			float b1 = a1 / triangleArea;
 			float b2 = a2 / triangleArea;
 
-			// If outside triangle, exit early
 			float sum = b0 + b1 + b2;
-			if (sum > 1.0001) {
-				continue;
-			}
-
-			Eigen::Vector3f worldP = t.verts[0] * b0 + t.verts[1] * b1 + t.verts[2] * b2;
+			if (sum > 1.0001f) continue;
 
 			float depth = t.screen[0].z() * b0 + t.screen[1].z() * b1 + t.screen[2].z() * b2;
 			int depthIdx = static_cast<int>(p.x()) + static_cast<int>(p.y()) * width;
 			if (depth > zBuffer[depthIdx]) continue;
 			zBuffer[depthIdx] = depth;
 
-			Eigen::Vector3f normP = t.norms[0] * b0 + t.norms[1] * b1 + t.norms[2] * b2;
-			normP.normalize();
+			Eigen::Vector3f worldP = t.verts[0] * b0 + t.verts[1] * b1 + t.verts[2] * b2;
 
-			// Two-sided lighting: flip normal if it faces away from the camera
+			Eigen::Vector3f normP = (t.norms[0] * b0 + t.norms[1] * b1 + t.norms[2] * b2).normalized();
 			Eigen::Vector3f viewDir = (camWorldPos - worldP).normalized();
 			if (normP.dot(viewDir) < 0.0f) normP = -normP;
 
 			Eigen::Vector2f texP = t.texs[0] * b0 + t.texs[1] * b1 + t.texs[2] * b2;
 
-			//Texture Mapping
-			int texC = (int)(texP.x() * texWidth);
-			int texR = (int)((1.0f - texP.y()) * texHeight);
-			texC = std::max(0, std::min(texC, texWidth - 1));
-			texR = std::max(0, std::min(texR, texHeight - 1));
+			int texC = std::max(0, std::min((int)(texP.x() * texWidth),  texWidth  - 1));
+			int texR = std::max(0, std::min((int)((1.0f - texP.y()) * texHeight), texHeight - 1));
 
-			// Get the value from the texture (hint: use the getPixel function on the albedoTexture).
-			Color texColor = getPixel(albedoTexture, texC, texR, texWidth, texHeight);;
-
-			// Convert it into an Eigen::Vector3f as an albedo
+			Color texColor = getPixel(albedoTexture, texC, texR, texWidth, texHeight);
 			Eigen::Vector3f albedo(powf(texColor.r / 255.0f, 2.2f), powf(texColor.g / 255.0f, 2.2f), powf(texColor.b / 255.0f, 2.2f));
 
-			// Work out colour at this position.
 			Eigen::Vector3f color = Eigen::Vector3f::Zero();
-
-			// Iterate over lights, and sum to find colour.
 			for (auto& light : lights) {
-
-				// Work out the contribution from this light source, and add it to the color variable.
-
-				// Work out the intensity of this light source, at the point worldP.
 				Eigen::Vector3f lightIntensity = light->getIntensityAt(worldP);
-
-				// We only need to do the following if the light isn't an ambient light.
 				if (light->getType() != Light::Type::AMBIENT) {
-
-					// Work out the incoming light dir (from the light into the surface point).
 					Eigen::Vector3f incomingLightDir = light->getDirection(worldP);
-					// Work out the view direction (from surface point towards camera). Make sure it's normalized!
-					Eigen::Vector3f viewDir = (camWorldPos - worldP).normalized();
-					// Find the specular term by calling phongSpecularTerm.
 					float specularTerm = blinnPhongSpecularTerm(incomingLightDir, normP, viewDir, specularExponent);
 
 					Eigen::Vector3f specularOut = specularColor * specularTerm;
 					specularOut = coeffWiseMultiply(specularOut, lightIntensity);
 
-					// Take the dot product of the normal with the light direction.
-					float dotProd = normP.dot(-incomingLightDir);
+					float dotProd = std::max(normP.dot(-incomingLightDir), 0.0f);
 
-					// We don't want negative light - if dot product less than 0, set it to 0.
-					dotProd = std::max(dotProd, 0.0f);
-
-					// Multiply the light intensity by the dot product.
 					Eigen::Vector3f diffuseOut = lightIntensity * dotProd;
 					diffuseOut = coeffWiseMultiply(diffuseOut, albedo);
 
-					// Add both diffuse and specular components to the colour.
-					color += specularOut;
-					color += diffuseOut;
+					color += specularOut + diffuseOut;
 				}
 				else {
-					// Light is ambient - just multiply light intensity with albedo.
 					color += coeffWiseMultiply(lightIntensity, albedo);
 				}
 			}
 
 			Color c;
-			// Gamma-correcting colours.
-			c.r = std::min(powf(color.x(), 1 / 2.2f), 1.0f) * 255;
-			c.g = std::min(powf(color.y(), 1 / 2.2f), 1.0f) * 255;
-			c.b = std::min(powf(color.z(), 1 / 2.2f), 1.0f) * 255;
-
+			c.r = std::min(powf(color.x(), 1.0f / 2.2f), 1.0f) * 255;
+			c.g = std::min(powf(color.y(), 1.0f / 2.2f), 1.0f) * 255;
+			c.b = std::min(powf(color.z(), 1.0f / 2.2f), 1.0f) * 255;
 			c.a = 255;
-
 			setPixel(image, x, y, width, height, c);
 		}
 }
@@ -177,7 +139,8 @@ void drawMesh(std::vector<unsigned char>& image,
 	const Eigen::Matrix4f& modelToWorld,
 	const Eigen::Matrix4f& worldToClip,
 	const std::vector<std::unique_ptr<Light>>& lights,
-	int width, int height)
+	int width, int height,
+	bool backfaceCull = true)   // <-- add this
 {
 	for (int i = 0; i < mesh.vFaces.size(); ++i) {
 		Eigen::Vector3f
@@ -195,10 +158,13 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.verts[2] = (modelToWorld * vec3ToVec4(v2)).block<3, 1>(0, 0);
 
 		Eigen::Vector4f vClip0 = worldToClip * modelToWorld * vec3ToVec4(v0);
+		t.clipW[0] = vClip0.w();                   // <-- save before divide
 		vClip0 /= vClip0.w();
 		Eigen::Vector4f vClip1 = worldToClip * modelToWorld * vec3ToVec4(v1);
+		t.clipW[1] = vClip1.w();
 		vClip1 /= vClip1.w();
 		Eigen::Vector4f vClip2 = worldToClip * modelToWorld * vec3ToVec4(v2);
+		t.clipW[2] = vClip2.w();
 		vClip2 /= vClip2.w();
 
 		//check if all vertices are outside the same clip plane
@@ -223,7 +189,7 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.texs[1] = mesh.texs[mesh.tFaces[i][1]];
 		t.texs[2] = mesh.texs[mesh.tFaces[i][2]];
 
-		drawTriangle(image, width, height, zBuffer, t, lights, albedoTexture, texWidth, texHeight, specularColor, specularExponent, camWorldPos);
+		drawTriangle(image, width, height, zBuffer, t, lights, albedoTexture, texWidth, texHeight, specularColor, specularExponent, camWorldPos, backfaceCull);  // <-- pass it through
 	}
 }
 
@@ -333,7 +299,7 @@ int main()
 	
 	//Background
 	Eigen::Matrix4f BGTransform;
-	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -0.8f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
+	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -.9f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
 	drawMesh(imageBuffer, zBuffer, BGMesh, BGTexture, BGTexWidth, BGTexHeight,
 		Eigen::Vector3f::Ones() * 1.0f, 50.f, camWorldPos,
 		BGTransform, worldToClip, lights, width, height);
@@ -375,10 +341,10 @@ int main()
 
 	//Water
 	Eigen::Matrix4f WaterTransform;
-	WaterTransform = translationMatrix(Eigen::Vector3f(0.0f, -0.87f, 2.f)) * scaleMatrix(1.5f);
+	WaterTransform = translationMatrix(Eigen::Vector3f(-1.5f, -1.f, 2.f)) * scaleMatrix(1.5f);
 	drawMesh(imageBuffer, zBuffer, WaterMesh, WaterTexture, WaterTexWidth, WaterTexHeight,
 		Eigen::Vector3f::Ones() * 0.4f, 2000.f, camWorldPos,
-		WaterTransform, worldToClip, lights, width, height);
+		WaterTransform, worldToClip, lights, width, height, false);  // <-- false = no backface cull
 
 
     // Save the image
