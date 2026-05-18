@@ -14,6 +14,7 @@ add_executable(rasteriser
     LinAlg.hpp
     Image.hpp
     Shading.hpp
+    gif.h
     )
 
 

@@ -1,9 +1,9 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include <array>
-
 #include <iostream>
 #include <lodepng.h>
+#include "gif.h"
 #include "Image.hpp"
 #include "LinAlg.hpp"
 #include "Light.hpp"
@@ -12,10 +12,17 @@
 
 struct Triangle {
 	std::array<Eigen::Vector3f, 3> screen;
-	std::array<float, 3> clipW;           // <-- add this
+	std::array<float, 3> clipW;
 	std::array<Eigen::Vector3f, 3> verts;
 	std::array<Eigen::Vector3f, 3> norms;
 	std::array<Eigen::Vector2f, 3> texs;
+	// Per-triangle material info so we can draw it later
+	const std::vector<uint8_t>* albedoTexture;
+	int texWidth;
+	int texHeight;
+	Eigen::Vector3f specularColor;
+	float specularExponent;
+	bool backfaceCull;
 };
 
 Eigen::Matrix4f projectionMatrix(int height, int width, float horzFov = 70.f * M_PI / 180.f, float zFar = 10.f, float zNear = 0.1f)
@@ -129,20 +136,20 @@ void drawTriangle(std::vector<uint8_t>& image, int width, int height,
 			setPixel(image, x, y, width, height, c);
 		}
 }
-void drawMesh(std::vector<unsigned char>& image,
-	std::vector<float>& zBuffer,
+// Collects transformed triangles from a mesh into an output vector, without drawing
+void collectTriangles(
+	std::vector<Triangle>& outTriangles,
 	const Mesh& mesh,
 	const std::vector<uint8_t>& albedoTexture, int texWidth, int texHeight,
 	const Eigen::Vector3f& specularColor,
 	float specularExponent,
-	const Eigen::Vector3f& camWorldPos,
 	const Eigen::Matrix4f& modelToWorld,
 	const Eigen::Matrix4f& worldToClip,
-	const std::vector<std::unique_ptr<Light>>& lights,
 	int width, int height,
-	bool backfaceCull = true)   // <-- add this
+	bool backfaceCull = true)
 {
-	for (int i = 0; i < mesh.vFaces.size(); ++i) {
+	for (int i = 0; i < (int)mesh.vFaces.size(); ++i)
+	{
 		Eigen::Vector3f
 			v0 = mesh.verts[mesh.vFaces[i][0]],
 			v1 = mesh.verts[mesh.vFaces[i][1]],
@@ -158,7 +165,7 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.verts[2] = (modelToWorld * vec3ToVec4(v2)).block<3, 1>(0, 0);
 
 		Eigen::Vector4f vClip0 = worldToClip * modelToWorld * vec3ToVec4(v0);
-		t.clipW[0] = vClip0.w();                   // <-- save before divide
+		t.clipW[0] = vClip0.w();
 		vClip0 /= vClip0.w();
 		Eigen::Vector4f vClip1 = worldToClip * modelToWorld * vec3ToVec4(v1);
 		t.clipW[1] = vClip1.w();
@@ -167,7 +174,6 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.clipW[2] = vClip2.w();
 		vClip2 /= vClip2.w();
 
-		//check if all vertices are outside the same clip plane
 		bool cull =
 			(vClip0.x() < -1.f && vClip1.x() < -1.f && vClip2.x() < -1.f) ||
 			(vClip0.x() >  1.f && vClip1.x() >  1.f && vClip2.x() >  1.f) ||
@@ -189,57 +195,35 @@ void drawMesh(std::vector<unsigned char>& image,
 		t.texs[1] = mesh.texs[mesh.tFaces[i][1]];
 		t.texs[2] = mesh.texs[mesh.tFaces[i][2]];
 
-		drawTriangle(image, width, height, zBuffer, t, lights, albedoTexture, texWidth, texHeight, specularColor, specularExponent, camWorldPos, backfaceCull);  // <-- pass it through
+		t.albedoTexture  = &albedoTexture;
+		t.texWidth       = texWidth;
+		t.texHeight      = texHeight;
+		t.specularColor  = specularColor;
+		t.specularExponent = specularExponent;
+		t.backfaceCull   = backfaceCull;
+
+		outTriangles.push_back(t);
 	}
 }
 
 int main()
 {
-	std::string outputFilename = "output.png";
-
 	const int width = 1920, height = 1080;
-	const int nChannels = 4;
+	const int	 nChannels = 4;
 
-	// Set up an image buffer
-	std::vector<uint8_t> imageBuffer(height*width*nChannels);
-	std::vector<float> zBuffer(height * width);
+	// How many triangles to add per GIF frame — increase for fewer frames, decrease for more detail
+	const int trianglesPerFrame = 20;
+	// Delay per frame in centiseconds (4 = ~25fps)
+	const int frameDelayCs = 10;
+	const char* gifFilename = "output.gif";
 
-	Color black{ 0,0,0,255 };
-	for (int r = 0; r < height; ++r) {
-		for (int c = 0; c < width; ++c) {
-			setPixel(imageBuffer, c, r, width, height, black);
-			zBuffer[r * width + c] = 1.0f;
-		}
-	}
-
+	// Camera setup
 	Eigen::Matrix4f projection = projectionMatrix(height, width);
-
-	// This matrix rotates the camera, tilting it down, then translates it up to make it look down on the scene.
 	Eigen::Matrix4f cameraToWorld = translationMatrix(Eigen::Vector3f(0.1f, -0.7f, 2.f));
-
 	Eigen::Vector3f camWorldPos = (cameraToWorld * Eigen::Vector4f(0, 0, 0, 1)).block<3, 1>(0, 0);
+	Eigen::Matrix4f worldToClip = projection * cameraToWorld.inverse();
 
-	// Set up worldToCamera, based on cameraToWorld above
-	Eigen::Matrix4f worldToCamera = cameraToWorld.inverse();
-	// Set up worldToClip, using the projection and worldToCamera matrices
-	Eigen::Matrix4f worldToClip = projection * worldToCamera;
-
-
-	//Scene setup
-
-	//Models
-	std::string TidusModel = "../models/TidusModel/Tidus.obj";
-	std::string TidusArmModel = "../models/TidusModel/TidusArm.obj";
-	std::string YunaModel = "../models/YunaModel/Yuna.obj";
-
-	std::string BGModel = "../models/Assets/BG/BG.obj";
-	std::string BranchModel = "../models/Assets/Branch/Branch.obj";
-	std::string Crystal1Model = "../models/Assets/Crystals/Crystal1.obj";
-	std::string Crystal2Model = "../models/Assets/Crystals/Crystal2.obj";
-	std::string WaterModel = "../models/Assets/Water/Water.obj";
-
-
-	//Textures
+	// Load textures
 	std::vector<uint8_t> TidusTexture;
 	unsigned int TidusTexWidth, TidusTexHeight;
 	lodepng::decode(TidusTexture, TidusTexWidth, TidusTexHeight, "../models/TidusModel/TidusTex.png");
@@ -249,113 +233,117 @@ int main()
 	std::vector<uint8_t> YunaTexture;
 	unsigned int YunaTexWidth, YunaTexHeight;
 	lodepng::decode(YunaTexture, YunaTexWidth, YunaTexHeight, "../models/YunaModel/YunaTex.png");
-
 	std::vector<uint8_t> BGTexture;
 	unsigned int BGTexWidth, BGTexHeight;
 	lodepng::decode(BGTexture, BGTexWidth, BGTexHeight, "../models/Assets/BG/BG.png");
-
 	std::vector<uint8_t> BranchTexture;
 	unsigned int BranchTexWidth, BranchTexHeight;
 	lodepng::decode(BranchTexture, BranchTexWidth, BranchTexHeight, "../models/Assets/Branch/Branch.png");
-
 	std::vector<uint8_t> CrystalTexture;
 	unsigned int CrystalTexWidth, CrystalTexHeight;
 	lodepng::decode(CrystalTexture, CrystalTexWidth, CrystalTexHeight, "../models/Assets/Crystals/CrystalsTex.png");
-
 	std::vector<uint8_t> WaterTexture;
 	unsigned int WaterTexWidth, WaterTexHeight;
 	lodepng::decode(WaterTexture, WaterTexWidth, WaterTexHeight, "../models/Assets/Water/Water.png");
 
+	// Load meshes
+	Mesh TidusMesh = loadMeshFile("../models/TidusModel/Tidus.obj");
+	Mesh TidusArmMesh = loadMeshFile("../models/TidusModel/TidusArm.obj");
+	Mesh YunaMesh = loadMeshFile("../models/YunaModel/Yuna.obj");
+	Mesh BGMesh = loadMeshFile("../models/Assets/BG/BG.obj");
+	Mesh BranchMesh = loadMeshFile("../models/Assets/Branch/Branch.obj");
+	Mesh Crystal1Mesh = loadMeshFile("../models/Assets/Crystals/Crystal1.obj");
+	Mesh Crystal2Mesh = loadMeshFile("../models/Assets/Crystals/Crystal2.obj");
+	Mesh WaterMesh = loadMeshFile("../models/Assets/Water/Water.obj");
 
-	//Lights
+	// Lights
 	std::vector<std::unique_ptr<Light>> lights;
 	lights.emplace_back(new DirectionalLight(Eigen::Vector3f(0.3f, 0.3f, 0.3f), Eigen::Vector3f(1.f, -1.f, 0.0f)));
 	lights.emplace_back(new AmbientLight(Eigen::Vector3f(.05f, .05f, .05f)));
-
-	//crystal lights
 	lights.emplace_back(new PointLight(Eigen::Vector3f(1.2f, 2.0f, 3.0f) * 0.2f, Eigen::Vector3f(-1.428f, -0.8f, 4.614f)));
 	lights.emplace_back(new PointLight(Eigen::Vector3f(1.2f, 2.f, 3.0f) * 0.2f, Eigen::Vector3f(-1.752f, -.9f, 4.870f)));
-
-	//Model lights
 	lights.emplace_back(new PointLight(Eigen::Vector3f(1.0f, 0.95f, 0.85f) * 0.3f, Eigen::Vector3f(0.076f, -0.4f, 2.989f)));
-
-	//BG lights
 	lights.emplace_back(new PointLight(Eigen::Vector3f(8.f, 2.f, 1.f) * .5f, Eigen::Vector3f(1.55f, 1.3f, 7.5f)));
 	lights.emplace_back(new PointLight(Eigen::Vector3f(8.f, 2.f, 1.f) * .3f, Eigen::Vector3f(2.7f, .6f, 7.5f)));
-	
-	//Meshes
-	Mesh TidusMesh = loadMeshFile(TidusModel);
-	Mesh TidusArmMesh = loadMeshFile(TidusArmModel);
 
-	Mesh YunaMesh = loadMeshFile(YunaModel);
+	// Transforms
+	Eigen::Matrix4f BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -.9f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
+	Eigen::Matrix4f ModelsTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
+	Eigen::Matrix4f BranchTransform = translationMatrix(Eigen::Vector3f(-.63f, -0.98f, 7.f));
+	Eigen::Matrix4f CrystalTransform = translationMatrix(Eigen::Vector3f(-.68f, -0.98f, 7.f));
+	Eigen::Matrix4f WaterTransform = translationMatrix(Eigen::Vector3f(-1.5f, -1.f, 2.f)) * scaleMatrix(1.5f);
 
-	Mesh BGMesh = loadMeshFile(BGModel);
-	Mesh BranchMesh = loadMeshFile(BranchModel);
-	Mesh Crystal1Mesh = loadMeshFile(Crystal1Model);
-	Mesh Crystal2Mesh = loadMeshFile(Crystal2Model);
-	Mesh WaterMesh = loadMeshFile(WaterModel);
+	// Collect ALL triangles from the entire scene into one ordered list
+	std::vector<Triangle> allTriangles;
+	collectTriangles(allTriangles, BGMesh, BGTexture, BGTexWidth, BGTexHeight, Eigen::Vector3f::Ones() * 1.0f, 50.f, BGTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, BranchMesh, BranchTexture, BranchTexWidth, BranchTexHeight, Eigen::Vector3f::Ones() * 0.2f, 1000.f, BranchTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, Crystal1Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight, Eigen::Vector3f::Ones() * 1.0f, 10.f, CrystalTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, Crystal2Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight, Eigen::Vector3f::Ones() * 1.0f, 10.f, CrystalTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, WaterMesh, WaterTexture, WaterTexWidth, WaterTexHeight, Eigen::Vector3f::Ones() * 0.4f, 2000.f, WaterTransform, worldToClip, width, height, false);
+	collectTriangles(allTriangles, TidusMesh, TidusTexture, TidusTexWidth, TidusTexHeight, Eigen::Vector3f::Ones() * 0.2f, 1000.f, ModelsTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, TidusArmMesh, TidusArmTexture, TidusArmTexWidth, TidusArmTexHeight, Eigen::Vector3f::Ones() * 1.0f, 20.f, ModelsTransform, worldToClip, width, height);
+	collectTriangles(allTriangles, YunaMesh, YunaTexture, YunaTexWidth, YunaTexHeight, Eigen::Vector3f::Ones() * 0.2f, 1000.f, ModelsTransform, worldToClip, width, height);
 
-	//Rendering 
-	
-	//Background
-	Eigen::Matrix4f BGTransform;
-	BGTransform = translationMatrix(Eigen::Vector3f(0.5f, -1.f, -.9f)) * rotateYMatrix(M_PI) * scaleMatrix(2.0f);
-	drawMesh(imageBuffer, zBuffer, BGMesh, BGTexture, BGTexWidth, BGTexHeight,
-		Eigen::Vector3f::Ones() * 1.0f, 50.f, camWorldPos,
-		BGTransform, worldToClip, lights, width, height);
+	std::cout << "Total triangles to draw: " << allTriangles.size() << std::endl;
 
-	//Models
-	Eigen::Matrix4f ModelsTransform;
-	ModelsTransform = translationMatrix(Eigen::Vector3f(0.0f, -1.0f, 3.f));
-	drawMesh(imageBuffer, zBuffer, TidusMesh, TidusTexture, TidusTexWidth, TidusTexHeight,
-		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
-		ModelsTransform, worldToClip, lights, width, height);
+	// Persistent buffers — NOT reset between frames so triangles accumulate
+	std::vector<uint8_t> imageBuffer(height * width * nChannels);
+	std::vector<float> zBuffer(height * width);
+	Color black{ 0, 0, 0, 255 };
+	for (int r = 0; r < height; ++r)
+		for (int c = 0; c < width; ++c)
+		{
+			setPixel(imageBuffer, c, r, width, height, black);
+			zBuffer[r * width + c] = 1.0f;
+		}
 
-	drawMesh(imageBuffer, zBuffer, TidusArmMesh, TidusArmTexture, TidusArmTexWidth, TidusArmTexHeight,
-		Eigen::Vector3f::Ones() * 1.0f, 20.f, camWorldPos,
-		ModelsTransform, worldToClip, lights, width, height);
+	// Calculate total number of GIF frames
+	int totalFrames = ((int)allTriangles.size() + trianglesPerFrame - 1) / trianglesPerFrame;
+	std::cout << "Total GIF frames: " << totalFrames << std::endl;
 
-	drawMesh(imageBuffer, zBuffer, YunaMesh, YunaTexture, YunaTexWidth, YunaTexHeight,
-		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
-		ModelsTransform, worldToClip, lights, width, height);
+	// Split into: no lights for build-up, full lights for final reveal
+	std::vector<std::unique_ptr<Light>> noLights;  // empty — flat/unlit during drawing
 
-	//Branch
-	Eigen::Matrix4f BranchTransform;
-	BranchTransform = translationMatrix(Eigen::Vector3f(-.63f, -0.98f, 7.f));
+	// Ambient-only lights for the build-up phase
+	std::vector<std::unique_ptr<Light>> ambientOnlyLights;
+	ambientOnlyLights.emplace_back(new AmbientLight(Eigen::Vector3f(.05f, .05f, .05f)));
 
-	drawMesh(imageBuffer, zBuffer, BranchMesh, BranchTexture, BranchTexWidth, BranchTexHeight,
-		Eigen::Vector3f::Ones() * 0.2f, 1000.f, camWorldPos,
-		BranchTransform, worldToClip, lights, width, height);
+	GifWriter gifWriter;
+	GifBegin(&gifWriter, gifFilename, width, height, frameDelayCs);
 
-	//Crystals
-	Eigen::Matrix4f CrystalTransform;
-	CrystalTransform = translationMatrix(Eigen::Vector3f(-.68f, -0.98f, 7.f));
+	int trianglesDrawn = 0;
+	for (int frame = 0; frame < totalFrames; ++frame)
+	{
+		int batchEnd = std::min(trianglesDrawn + trianglesPerFrame, (int)allTriangles.size());
+		for (int i = trianglesDrawn; i < batchEnd; ++i)
+		{
+			const Triangle& t = allTriangles[i];
+			drawTriangle(imageBuffer, width, height, zBuffer, t, ambientOnlyLights,  // <-- ambient only
+				*t.albedoTexture, t.texWidth, t.texHeight,
+				t.specularColor, t.specularExponent, camWorldPos, t.backfaceCull);
+		}
+		trianglesDrawn = batchEnd;
 
-	drawMesh(imageBuffer, zBuffer, Crystal1Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight,
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
-		CrystalTransform, worldToClip, lights, width, height);
+		GifWriteFrame(&gifWriter, imageBuffer.data(), width, height, frameDelayCs);
+		std::cout << "Frame " << (frame + 1) << "/" << totalFrames
+			<< " (" << trianglesDrawn << "/" << allTriangles.size() << " triangles)" << std::endl;
+	}
 
-	drawMesh(imageBuffer, zBuffer, Crystal2Mesh, CrystalTexture, CrystalTexWidth, CrystalTexHeight,
-		Eigen::Vector3f::Ones() * 1.0f, 10.f, camWorldPos,
-		CrystalTransform, worldToClip, lights, width, height);
+	// Reset and re-render with all lights for the final frame
+	std::cout << "Rendering final lit frame..." << std::endl;
+	std::fill(imageBuffer.begin(), imageBuffer.end(), 0);
+	std::fill(zBuffer.begin(), zBuffer.end(), 1.0f);
+	for (int r = 0; r < height; ++r)
+		for (int c = 0; c < width; ++c)
+			setPixel(imageBuffer, c, r, width, height, black);
 
-	//Water
-	Eigen::Matrix4f WaterTransform;
-	WaterTransform = translationMatrix(Eigen::Vector3f(-1.5f, -1.f, 2.f)) * scaleMatrix(1.5f);
-	drawMesh(imageBuffer, zBuffer, WaterMesh, WaterTexture, WaterTexWidth, WaterTexHeight,
-		Eigen::Vector3f::Ones() * 0.4f, 2000.f, camWorldPos,
-		WaterTransform, worldToClip, lights, width, height, false);  // <-- false = no backface cull
+	for (const Triangle& t : allTriangles)
+		drawTriangle(imageBuffer, width, height, zBuffer, t, lights,  // <-- full lights
+			*t.albedoTexture, t.texWidth, t.texHeight,
+			t.specularColor, t.specularExponent, camWorldPos, t.backfaceCull);
 
+	const int finalFrameDelayCs = 300;
+	GifWriteFrame(&gifWriter, imageBuffer.data(), width, height, finalFrameDelayCs);
 
-    // Save the image
-    int errorCode;
-        errorCode = lodepng::encode(outputFilename, imageBuffer, width, height);
-        if (errorCode) { // check the error code, in case an error occurred.
-            std::cout << "lodepng error encoding image: " << lodepng_error_text(errorCode) << std::endl;
-            return errorCode;
-        }
-
-		saveZBufferImage(outputFilename + "_zBuffer.png", zBuffer, width, height);
-
-    return 0;
+	GifEnd(&gifWriter);
 }
