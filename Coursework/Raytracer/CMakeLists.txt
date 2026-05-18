@@ -3,7 +3,10 @@ cmake_minimum_required(VERSION 3.20)
 project(ray-tracing-lab-iii LANGUAGES CXX)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+list(APPEND CMAKE_PREFIX_PATH "$ENV{USERPROFILE}/vcpkg/installed/x64-windows")
+
 find_package(OpenMP)
+find_package(SDL2 CONFIG REQUIRED)
 
 add_subdirectory(3rdParty)
 
@@ -57,11 +60,10 @@ add_executable(main
     ${SHADERS_SOURCE_GROUP}
 )
 
-
 if(OpenMP_CXX_FOUND)
-    target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX lodepng)
+    target_link_libraries(main PUBLIC OpenMP::OpenMP_CXX lodepng SDL2::SDL2 SDL2::SDL2main)
 else()
-    target_link_libraries(main lodepng)
+    target_link_libraries(main PUBLIC lodepng SDL2::SDL2 SDL2::SDL2main)
 endif()
 
 include_directories(../../3rdParty/eigen-3.4.0)

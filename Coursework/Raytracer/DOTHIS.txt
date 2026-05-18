@@ -1,0 +1,3 @@
+git clone https://github.com/microsoft/vcpkg.git %USERPROFILE%/vcpkg
+%USERPROFILE%/vcpkg/bootstrap-vcpkg.bat
+%USERPROFILE%/vcpkg/vcpkg install sdl2:x64-windows

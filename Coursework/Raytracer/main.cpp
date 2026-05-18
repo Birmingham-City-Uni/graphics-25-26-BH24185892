@@ -5,6 +5,9 @@
 #include <vector>
 #include <random>
 #include <chrono>
+#include <thread>
+#include <atomic>
+#include <cmath>
 #include "BVHNode.hpp"
 #include "Triangle.hpp"
 #include "Scene.hpp"
@@ -19,10 +22,9 @@
 #include "TexCoordTestShader.hpp"
 #include "Model.hpp"
 #include <fstream>
+#include <SDL2/SDL.h>
+#undef main
 
-/// <summary>
-/// Load a JSON config file using the nlohmann library.
-/// </summary>
 nlohmann::json loadConfig(const std::string& filename)
 {
 	std::ifstream configStream(filename);
@@ -30,24 +32,50 @@ nlohmann::json loadConfig(const std::string& filename)
 	return config;
 }
 
-/// <summary>
-/// Load an Eigen Vector3f from a config file.
-/// Call as for example loadVec3FromConfig(config["myVector3"]);
-/// </summary>
 Eigen::Vector3f loadVec3FromConfig(const nlohmann::json& config)
 {
 	return Eigen::Vector3f(config[0], config[1], config[2]);
 }
 
+/// <summary>
+/// Returns a flicker multiplier for the lights contribution only.
+/// Uses smooth interpolation between random targets for organic transitions.
+/// </summary>
+float calcFlicker(float elapsedSeconds, std::mt19937& rng, std::uniform_real_distribution<float>& noiseDist)
+{
+	// Slow sine pulse — cycles every ~9 seconds
+	float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds * 1.1f);
+
+	// Smooth noise: interpolate between two random targets over a fixed interval
+	static float noiseFrom   = 0.f;
+	static float noiseTo     = 0.f;
+	static float noiseT      = 0.f;
+	const  float noisePeriod = 0.9f; // seconds between each new noise target
+
+	noiseT += 1.f / 60.f; // advance by one frame
+	if (noiseT >= noisePeriod) {
+		noiseFrom = noiseTo;
+		noiseTo   = noiseDist(rng);
+		noiseT    = 0.f;
+	}
+
+	// Smoothstep interpolation between noiseFrom and noiseTo
+	float t = noiseT / noisePeriod;
+	t = t * t * (3.f - 2.f * t); // smoothstep
+	float noise = noiseFrom + t * (noiseTo - noiseFrom);
+
+	return std::max(0.55f, std::min(1.0f, pulse * 0.38f + 0.62f + noise));
+}
+
 int main(int argc, char* argv[]) {
 
-	// *** Load the config file ***
 	auto config = loadConfig("../config/config.json");
 
 	const int pixHeight = config["pixHeight"], pixWidth = config["pixWidth"];
 	const int nChannels = 4;
+	const int maxBounces = config["maxBounces"];
+	const std::string outputFilename = config["outputFilename"];
 
-	// *** Set up camera and output image ***
 	Camera cam(
 		loadVec3FromConfig(config["cameraPos"]),
 		loadVec3FromConfig(config["cameraForward"]),
@@ -55,8 +83,12 @@ int main(int argc, char* argv[]) {
 		pixWidth, pixHeight,
 		config["cameraFov"]);
 
-
-	std::vector<uint8_t> outImage(pixHeight * pixWidth * nChannels);
+	// Two separate buffers: ambient-only pass and lights-only pass.
+	// Each stores float values (not clamped yet) so we can blend them per frame.
+	const int nPixels = pixHeight * pixWidth;
+	std::vector<float> ambientBuf(nPixels * 3, 0.f);  // RGB ambient contribution
+	std::vector<float> lightsBuf(nPixels * 3, 0.f);   // RGB lights contribution
+	std::vector<uint8_t> outImage(nPixels * nChannels, 0);
 
 	Eigen::Vector3f
 		red(1.f, 0.f, 0.f),
@@ -64,11 +96,8 @@ int main(int argc, char* argv[]) {
 		aqua(0.f, .8f, .8f),
 		lavender(178.f / 255.f, 164.f / 255.f, 212.f / 255.f);
 
-	// *** Load shaders and textures ***
-	
 	unsigned int width, height;
 
-	//Tidus
 	std::vector<uint8_t> TidusTexture;
 	lodepng::decode(TidusTexture, width, height, "../models/TidusModel/TidusTex.png");
 	TexturedLambertianShader tidusShader(&TidusTexture, width, height);
@@ -76,28 +105,23 @@ int main(int argc, char* argv[]) {
 	std::vector<uint8_t> TidusArmTexture;
 	lodepng::decode(TidusArmTexture, width, height, "../models/TidusModel/TidusArm.png");
 	TexturedPhongShader tidusArmShader(&TidusArmTexture, width, height, Eigen::Vector3f(8.f, 8.f, 8.f), 45.f);
-	
-	//Yuna
+
 	std::vector<uint8_t> YunaTexture;
 	lodepng::decode(YunaTexture, width, height, "../models/YunaModel/YunaTex.png");
 	TexturedLambertianShader yunaShader(&YunaTexture, width, height);
 
-	//Water
 	std::vector<uint8_t> WaterTexture;
 	lodepng::decode(WaterTexture, width, height, "../models/Assets/Water/Water.png");
 	TexturedLambertianShader waterShader(&WaterTexture, width, height);
 
-	//BG
 	std::vector<uint8_t> BGTexture;
 	lodepng::decode(BGTexture, width, height, "../models/Assets/BG/BG.png");
 	TexturedLambertianShader bgShader(&BGTexture, width, height);
 
-	//Branch
 	std::vector<uint8_t> BranchTexture;
 	lodepng::decode(BranchTexture, width, height, "../models/Assets/Branch/Branch.png");
 	TexturedLambertianShader branchShader(&BranchTexture, width, height);
 
-	//Crystals
 	std::vector<uint8_t> CrystalsTexture;
 	lodepng::decode(CrystalsTexture, width, height, "../models/Assets/Crystals/CrystalsTex.png");
 	TexturedPhongShader crystalsShader(&CrystalsTexture, width, height, Eigen::Vector3f(8.f, 8.f, 8.f), 15.f);
@@ -106,11 +130,10 @@ int main(int argc, char* argv[]) {
 	PhongShader bluePlasticShader(blue, Eigen::Vector3f(1.f, 1.f, 1.f), 1.f);
 	LambertianShader aquaLambertianShader(aqua);
 	LambertianShader lavenderLambertianShader(lavender);
-	
+
 	MirrorShader mirrorShader;
 	TexCoordTestShader texCoordTestShader;
 
-	// *** Set up scene ***
 	Scene scene;
 
 	Eigen::Matrix4f ModelsTransform = makeTranslationMatrix(Eigen::Vector3f(-.1f, -.2f, -4.3f));
@@ -118,50 +141,81 @@ int main(int argc, char* argv[]) {
 	Eigen::Matrix4f CrystalTransform = makeTranslationMatrix(Eigen::Vector3f(-0.3f, -.2f, -0.9f));
 	Eigen::Matrix4f WaterTransform = makeTranslationMatrix(Eigen::Vector3f(-1.5f, -.2f, -2.f)) * rotateY(M_PI / 10.0f) * uniformScale(2.f);
 	Eigen::Matrix4f BGTransform = makeTranslationMatrix(Eigen::Vector3f(1.12f, -.2f, -13.f)) * rotateY(M_PI) * uniformScale(5.f);
-	// Optional code: here's how to add the spot mesh to the scene, using a BVH
-	// Try enabling this and comparing it to the non-BVH version below!
+
 	Model tidusModel("../models/TidusModel/Tidus.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(tidusModel, &tidusShader, 4, ModelsTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusModel, &tidusShader, 10, ModelsTransform));
 	Model tidusArmModel("../models/TidusModel/TidusArm.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(tidusArmModel, &tidusArmShader, 4, ModelsTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(tidusArmModel, &tidusArmShader, 10, ModelsTransform));
 
 	Model yunaModel("../models/YunaModel/Yuna.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(yunaModel, &yunaShader, 4, ModelsTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(yunaModel, &yunaShader, 10, ModelsTransform));
 
 	Model waterModel("../models/Assets/Water/Water.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(waterModel, &waterShader, 4, WaterTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(waterModel, &waterShader, 10, WaterTransform));
 
 	Model bgModel("../models/Assets/BG/BG.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(bgModel, &bgShader, 4, BGTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(bgModel, &bgShader, 10, BGTransform));
 
 	Model branchModel("../models/Assets/Branch/Branch.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(branchModel, &branchShader, 4, BCTransform));
-	
+	scene.renderables.push_back(std::make_shared<BVHNode>(branchModel, &branchShader, 10, BCTransform));
+
 	Model Crystal2Model("../models/Assets/Crystals/Crystal2.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal2Model, &crystalsShader, 4, BCTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal2Model, &crystalsShader, 10, BCTransform));
 
 	Model Crystal1Model("../models/Assets/Crystals/Crystal1.obj");
-	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal1Model, &crystalsShader, 4, CrystalTransform));
+	scene.renderables.push_back(std::make_shared<BVHNode>(Crystal1Model, &crystalsShader, 10, CrystalTransform));
 
-
-	// *** Add lights to scene ***
-	Eigen::Vector3f ambientLight(0.01f,0.01f,0.01f);
+	Eigen::Vector3f ambientLight(0.01f, 0.01f, 0.01f);
+	Eigen::Vector3f noAmbient(0.f, 0.f, 0.f); // Used for the lights-only pass
 
 	std::vector<std::unique_ptr<Light>> lightSources;
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.f, 1.f, -4.5f), .1f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Front
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-.048f, -0.07f, -4.4f), .003f * Eigen::Vector3f(1.f, 1.f, 1.f))); //Between Models
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(0.f, 1.f, -4.5f), .1f * Eigen::Vector3f(1.f, 1.f, 1.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-.048f, -0.07f, -4.4f), .003f * Eigen::Vector3f(1.f, 1.f, 1.f)));
 	lightSources.push_back(std::make_unique<DirectionalLight>(Eigen::Vector3f(0.f, -1.f, 1.f), 0.8f * Eigen::Vector3f(1.f, 1.f, 1.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 0.1f, -3.2f), .05f * Eigen::Vector3f(1.f, 1.f, 2.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.6f, 0.0001f, -2.7f), .008f * Eigen::Vector3f(1.f, 1.f, 2.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(2.5f, 4.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));
+	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(5.9f, 3.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));
 
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.f, 0.1f, -3.2f), .05f * Eigen::Vector3f(1.f, 1.f, 2.f)));//Front Crystal
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(-1.6f, 0.0001f, -2.7f), .008f * Eigen::Vector3f(1.f, 1.f, 2.f)));//Back Crystal
+	// *** Initialise SDL2 ***
+	if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+		std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
+		return 1;
+	}
 
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(2.5f, 4.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));//Left Tree
-	lightSources.push_back(std::make_unique<PointLight>(Eigen::Vector3f(5.9f, 3.8f, 7.f), 1.f * Eigen::Vector3f(8.f, 2.f, 1.f)));//Right Tree 
+	SDL_Window* window = SDL_CreateWindow(
+		"Ray Tracer",
+		SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+		pixWidth, pixHeight, 0);
+	if (!window) {
+		std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
+		SDL_Quit();
+		return 1;
+	}
 
-	// *** Render the scene ***
+	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	if (!renderer) {
+		std::cerr << "SDL_CreateRenderer failed: " << SDL_GetError() << std::endl;
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
 
-	// Shuffling the scanline order gets better CPU usage between threads
-	// when some lines take longer to render than others.//
+	SDL_Texture* texture = SDL_CreateTexture(
+		renderer,
+		SDL_PIXELFORMAT_RGBA32,
+		SDL_TEXTUREACCESS_STREAMING,
+		pixWidth, pixHeight);
+	if (!texture) {
+		std::cerr << "SDL_CreateTexture failed: " << SDL_GetError() << std::endl;
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
+
+	std::atomic<bool> renderDone(false);
+
 	std::vector<unsigned int> scanlines(pixHeight);
 	for (int i = 0; i < pixHeight; ++i) scanlines[i] = i;
 
@@ -173,59 +227,129 @@ int main(int argc, char* argv[]) {
 
 	auto startTime = std::chrono::steady_clock::now();
 
-	Ray ray = cam.getRay(531, 325);
-	HitInfo hitInfo;
-	scene.intersect(ray, 1e-6f, 1e6f, hitInfo, VISIBLE_BITMASK);
-	float x = hitInfo.hitT;
+	std::thread renderThread([&]() {
+		// Empty light list used for the ambient-only pass
+		const std::vector<std::unique_ptr<Light>> noLights;
 
-
-	#pragma omp parallel for
-	for (int y = 0; y < pixHeight; ++y) {
-		for (int x = 0; x < pixWidth; ++x) {
-			Ray ray = cam.getRay(x, scanlines[y]);
-			HitInfo hitInfo;
-			if (scene.intersect(ray, 1e-6f, 1e6f, hitInfo, VISIBLE_BITMASK)) {
-				Eigen::Vector3f color = hitInfo.shader->getColor(
-					hitInfo, &scene,
-					lightSources, ambientLight,
-					0, config["maxBounces"]);
-
-				color.x() = std::min(color.x(), 1.f);
-				color.y() = std::min(color.y(), 1.f);
-				color.z() = std::min(color.z(), 1.f);
-
+		#pragma omp parallel for schedule(dynamic)
+		for (int y = 0; y < pixHeight; ++y) {
+			for (int x = 0; x < pixWidth; ++x) {
+				Ray ray = cam.getRay(x, scanlines[y]);
+				HitInfo hitInfo;
 
 				int line = (pixHeight - scanlines[y]) - 1;
-				outImage[(x + line * pixWidth) * nChannels + 0] = color.x() * 255;
-				outImage[(x + line * pixWidth) * nChannels + 1] = color.y() * 255;
-				outImage[(x + line * pixWidth) * nChannels + 2] = color.z() * 255;
-				outImage[(x + line * pixWidth) * nChannels + 3] = 255;
-			}
-			else {
-				int line = (pixHeight - scanlines[y]) - 1;
-				outImage[(x + line * pixWidth) * nChannels + 0] = 0;
-				outImage[(x + line * pixWidth) * nChannels + 1] = 0;
-				outImage[(x + line * pixWidth) * nChannels + 2] = 0;
-				outImage[(x + line * pixWidth) * nChannels + 3] = 255;
+				int pidx = (x + line * pixWidth) * 3;
+				int oidx = (x + line * pixWidth) * nChannels;
+
+				if (scene.intersect(ray, 1e-6f, 1e6f, hitInfo, VISIBLE_BITMASK)) {
+					// Ambient only: real ambientLight, no lights, no bounces
+					Eigen::Vector3f ambColor = hitInfo.shader->getColor(
+						hitInfo, &scene, noLights, ambientLight, 0, 0);
+
+					// Lights only: zero ambient, full light list, full bounces
+					Eigen::Vector3f litColor = hitInfo.shader->getColor(
+						hitInfo, &scene, lightSources, noAmbient, 0, maxBounces);
+
+					ambientBuf[pidx + 0] = ambColor.x();
+					ambientBuf[pidx + 1] = ambColor.y();
+					ambientBuf[pidx + 2] = ambColor.z();
+
+					lightsBuf[pidx + 0] = litColor.x();
+					lightsBuf[pidx + 1] = litColor.y();
+					lightsBuf[pidx + 2] = litColor.z();
+
+					// Initial display at full brightness
+					outImage[oidx + 0] = static_cast<uint8_t>(std::min(ambColor.x() + litColor.x(), 1.f) * 255);
+					outImage[oidx + 1] = static_cast<uint8_t>(std::min(ambColor.y() + litColor.y(), 1.f) * 255);
+					outImage[oidx + 2] = static_cast<uint8_t>(std::min(ambColor.z() + litColor.z(), 1.f) * 255);
+					outImage[oidx + 3] = 255;
+				}
+				else {
+					outImage[oidx + 0] = 0;
+					outImage[oidx + 1] = 0;
+					outImage[oidx + 2] = 0;
+					outImage[oidx + 3] = 255;
+				}
 			}
 		}
-		if (omp_get_thread_num() == omp_get_num_threads()-1) {
-			std::clog << "\rScanlines remaining: " << (pixHeight - y) << ' ' << std::flush;
+		renderDone = true;
+	});
+
+	// *** Flicker state ***
+	std::mt19937 flickerRng(std::random_device{}());
+	std::uniform_real_distribution<float> flickerNoise(-0.02f, 0.02f);
+	auto flickerStart = std::chrono::steady_clock::now();
+
+	bool quit = false;
+	bool pngSaved = false;
+	auto lastTextureUpdate = std::chrono::steady_clock::now();
+
+	while (!quit) {
+		SDL_Event event;
+		while (SDL_PollEvent(&event)) {
+			if (event.type == SDL_QUIT)
+				quit = true;
+			if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
+				quit = true;
 		}
 
+		float elapsed = std::chrono::duration<float>(
+			std::chrono::steady_clock::now() - flickerStart).count();
+
+		auto now = std::chrono::steady_clock::now();
+		bool shouldUpdate = renderDone ||
+			std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTextureUpdate).count() >= 100;
+
+		if (renderDone) {
+			// Composite ambient (fixed) + lights (flickered) into outImage each frame
+			float flicker = calcFlicker(elapsed, flickerRng, flickerNoise);
+			for (int i = 0; i < nPixels; ++i) {
+				int pidx = i * 3;
+				int oidx = i * nChannels;
+				float r = ambientBuf[pidx + 0] + lightsBuf[pidx + 0] * flicker;
+				float g = ambientBuf[pidx + 1] + lightsBuf[pidx + 1] * flicker;
+				float b = ambientBuf[pidx + 2] + lightsBuf[pidx + 2] * flicker;
+				outImage[oidx + 0] = static_cast<uint8_t>(std::min(r, 1.f) * 255);
+				outImage[oidx + 1] = static_cast<uint8_t>(std::min(g, 1.f) * 255);
+				outImage[oidx + 2] = static_cast<uint8_t>(std::min(b, 1.f) * 255);
+				outImage[oidx + 3] = 255;
+			}
+
+			// Remove the color mod — compositing is now done manually
+			SDL_SetTextureColorMod(texture, 255, 255, 255);
+
+			if (!pngSaved) {
+				auto renderTime = std::chrono::steady_clock::now() - startTime;
+				std::cout << "Render duration "
+					<< std::chrono::duration_cast<std::chrono::milliseconds>(renderTime).count() * 1e-3f
+					<< " seconds." << std::endl;
+
+				int errorCode = lodepng::encode(outputFilename, outImage, pixWidth, pixHeight);
+				if (errorCode)
+					std::cout << "lodepng error: " << lodepng_error_text(errorCode) << std::endl;
+
+				pngSaved = true;
+			}
+		}
+
+		if (shouldUpdate) {
+			SDL_UpdateTexture(texture, nullptr, outImage.data(), pixWidth * nChannels);
+			lastTextureUpdate = now;
+		}
+
+		SDL_RenderClear(renderer);
+		SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+		SDL_RenderPresent(renderer);
+
+		SDL_Delay(16);
 	}
 
-	auto renderTime = std::chrono::steady_clock::now() - startTime;
+	renderThread.join();
 
-	std::cout << "Render duration " << std::chrono::duration_cast<std::chrono::milliseconds>(renderTime).count() * 1e-3f << " seconds." << std::endl;
-
-	// *** Save the output image ***
-	int errorCode;
-	errorCode = lodepng::encode(config["outputFilename"], outImage, pixWidth, pixHeight);
-	if (errorCode) { // check the error code, in case an error occurred.
-		std::cout << "lodepng error encoding image: " << lodepng_error_text(errorCode) << std::endl;
-		return errorCode;
-	}
+	SDL_DestroyTexture(texture);
+	SDL_DestroyRenderer(renderer);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
 
 	return 0;
 }
